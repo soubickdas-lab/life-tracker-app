@@ -76,6 +76,15 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) { accountSheet }
     }
 
+    private func open(_ address: String) {
+        guard let url = URL(string: address) else { return }
+        #if os(macOS)
+        NSWorkspace.shared.open(url)
+        #else
+        UIApplication.shared.open(url)
+        #endif
+    }
+
     private func copyCalendar() {
         #if os(macOS)
         NSPasteboard.general.clearContents()
@@ -102,26 +111,35 @@ struct RootView: View {
 
             if !store.calendarLink.isEmpty {
                 Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Calendar").font(.system(size: 14, weight: .medium))
-                    Text("Subscribe to this in Calendar and your timed tasks show up there. It refreshes itself every few minutes.")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Your calendar").font(.system(size: 14, weight: .medium))
+                    Text("Put your timed tasks into the calendar you already use. One tap — it keeps itself up to date.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button("Copy calendar link") { copyCalendar() }
-                        #if os(macOS)
-                        Button("Subscribe now") {
-                            if let url = URL(string: store.calendarLink.replacingOccurrences(
-                                of: "https://", with: "webcal://")) {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        #endif
+
+                    Button {
+                        open(store.calendarLink.replacingOccurrences(of: "https://", with: "webcal://"))
+                    } label: {
+                        Label("Add to Apple Calendar", systemImage: "calendar.badge.plus")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        let encoded = store.calendarLink
+                            .addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+                        open("https://calendar.google.com/calendar/render?cid=" + encoded)
+                    } label: {
+                        Label("Add to Google Calendar", systemImage: "globe")
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Button("Copy the link instead") { copyCalendar() }
+                        .font(.system(size: 12))
+
                     if copied {
-                        Text("Copied — paste it into Calendar ▸ New Calendar Subscription")
-                            .font(.system(size: 11)).foregroundStyle(UI.mint)
+                        Text("Copied").font(.system(size: 11)).foregroundStyle(UI.mint)
                     }
                 }
             }
