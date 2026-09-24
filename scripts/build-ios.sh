@@ -55,6 +55,7 @@ cat > "$OUT/Info.plist" <<PLIST
 	<key>LSRequiresIPhoneOS</key><true/>
 	<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
 	<key>UILaunchScreen</key><dict/>
+	<key>CADisableMinimumFrameDurationOnPhone</key><true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

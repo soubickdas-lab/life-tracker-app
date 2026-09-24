@@ -66,29 +66,49 @@ enum Notifier {
         guard Bundle.main.bundleIdentifier != nil,
               let today = state.todayBlock else { return }
 
+        let lead = max(0, leadMinutes)
         let centre = UNUserNotificationCenter.current()
         centre.getPendingNotificationRequests { pending in
             let mine = pending.map(\.identifier).filter { $0.hasPrefix(prefix) }
             centre.removePendingNotificationRequests(withIdentifiers: mine)
 
+            let now = Date()
             for task in today.tasks where !task.done && !task.pending {
                 guard let start = moment(day: today.date, time: task.start) else { continue }
-                let fire = start.addingTimeInterval(-Double(max(0, leadMinutes)) * 60)
-                guard fire > Date() else { continue }
 
-                let note = UNMutableNotificationContent()
-                note.title = task.task
-                note.body = task.slot.isEmpty ? "Starting soon" : "Starts at \(task.slot)"
-                note.sound = .default
+                /* the heads-up, a few minutes out */
+                if lead > 0 {
+                    let warning = start.addingTimeInterval(-Double(lead) * 60)
+                    if warning > now {
+                        add(centre, id: prefix + task.id + "-soon", title: task.task,
+                            body: "In \(lead) min" + (task.slot.isEmpty ? "" : " · \(task.slot)"),
+                            at: warning)
+                    }
+                }
 
-                let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
-                let request = UNNotificationRequest(
-                    identifier: prefix + task.id,
-                    content: note,
-                    trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
-                centre.add(request)
+                /* and the one at the time itself */
+                if start > now {
+                    add(centre, id: prefix + task.id + "-now", title: task.task,
+                        body: task.slot.isEmpty ? "Starting now" : "Starting now · \(task.slot)",
+                        at: start)
+                }
             }
         }
+    }
+
+    /// One alert, at one moment.
+    private static func add(_ centre: UNUserNotificationCenter,
+                            id: String, title: String, body: String, at when: Date) {
+        let note = UNMutableNotificationContent()
+        note.title = title
+        note.body = body
+        note.sound = .default
+
+        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: when)
+        centre.add(UNNotificationRequest(
+            identifier: id,
+            content: note,
+            trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)))
     }
 
     /// "2026-09-24" + "5:00 PM" → a real moment.

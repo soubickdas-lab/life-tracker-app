@@ -59,7 +59,7 @@ struct SetupScreen: View {
 
     private var alertLabel: String {
         switch alerts {
-        case .authorized, .provisional, .ephemeral: return "\(waiting) set for today"
+        case .authorized, .provisional, .ephemeral: return "\(waiting) queued today"
         case .denied:                               return "blocked"
         default:                                    return "not asked yet"
         }
@@ -77,12 +77,12 @@ struct SetupScreen: View {
         switch alerts {
         case .authorized, .provisional, .ephemeral:
             return waiting > 0
-                ? "You will be nudged \(store.reminderLead) minutes before each timed task left today."
+                ? "Two alerts for every timed task left today: one \(store.reminderLead) minutes ahead, one when it starts."
                 : "Allowed, but nothing is queued — either today's timed tasks are done, or their time has already passed."
         case .denied:
             return "This device is refusing them. Turn Life Tracker back on in notification settings, then press Check again."
         default:
-            return "Not asked yet on this device. Turn them on to be nudged \(store.reminderLead) minutes before a timed task."
+            return "Not asked yet on this device. Turn them on to be nudged \(store.reminderLead) minutes before a timed task, and again when it starts."
         }
     }
 

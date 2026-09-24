@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "productivity",
       "screenshotURLs": [],
-      "version": "1.3",
+      "version": "1.4",
       "versionDate": "2026-09-24T00:00:00Z",
       "versionDescription": "Tick anywhere on a row, edit a task's time in place, every sheet tab on the phone.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 677295,
+      "size": 678328,
       "versions": [
         {
-          "version": "1.3",
-          "buildVersion": "5",
+          "version": "1.4",
+          "buildVersion": "6",
           "date": "2026-09-24",
           "localizedDescription": "Tick anywhere on a row, edit a task's time in place, every sheet tab on the phone.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 677295,
+          "size": 678328,
           "minOSVersion": "18.0"
         }
       ]
