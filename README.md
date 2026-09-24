@@ -62,3 +62,37 @@ xcodebuild -project LifeTracker.xcodeproj -scheme LifeTracker -destination 'plat
 
 For a real iPhone: open the project in Xcode, pick your device, set a team under Signing, then
 re-sign through SideStore the way the other sideloaded apps are handled (free accounts expire after 7 days).
+
+## Putting it on the iPhone
+
+The repo carries a ready, unsigned build — SideStore signs it on the phone.
+
+**Once:** SideStore ▸ Sources ▸ **+** ▸ paste
+
+```
+https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/source.json
+```
+
+Life Tracker then shows up under that source; tap Install. Every later version arrives
+in the same place — no cable, no re-export.
+
+Or skip the source entirely and hand SideStore the file:
+[dist/LifeTracker.ipa](dist/LifeTracker.ipa).
+
+**Shipping an update**
+
+```bash
+./scripts/build-ios.sh ipa     # builds build/LifeTracker.ipa
+./scripts/make-source.sh       # copies it into dist/ and rewrites source.json
+git commit -am "new build" && git push
+```
+
+Bump `CFBundleShortVersionString` in `scripts/build-ios.sh` first — SideStore only offers
+an update when the version number changes.
+
+## Building without Xcode's licence
+
+`sudo xcodebuild -license accept` has never been run on this Mac, so `xcrun`, `xcodebuild`
+and the simulator tooling all refuse. Both build scripts sidestep that by calling the
+toolchain directly: `swiftc` from `XcodeDefault.xctoolchain` with an explicit `-sdk`, and
+`Contents/Developer/usr/bin/simctl` for the simulator. Nothing else is needed.
