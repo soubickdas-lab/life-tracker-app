@@ -16,23 +16,78 @@ final class Store {
     var errorText: String?
     var lastSync: Date?
 
-    var endpoint: String {
-        didSet { UserDefaults.standard.set(endpoint, forKey: "endpoint") }
+    /// Who this device is signed in as. Kept so the app opens straight into the day.
+    var token: String {
+        didSet { UserDefaults.standard.set(token, forKey: "token") }
     }
-    var key: String {
-        didSet { UserDefaults.standard.set(key, forKey: "key") }
-    }
+    var email = ""
+    var waiting = false          /* signed in, but the account has not been let in yet */
+    var isAdmin = false
 
-    var api: TrackerAPI { TrackerAPI(endpoint: endpoint, key: key) }
-    var isConfigured: Bool { api.isConfigured }
+    var api: TrackerAPI { TrackerAPI(token: token) }
+    var isConfigured: Bool { api.isConfigured && !waiting }
+    var isSignedIn: Bool { !token.isEmpty }
 
     /// Runs while the app is in front, so a change made on the phone shows up here
     /// without anyone pressing anything.
     private var poller: Task<Void, Never>?
 
     init() {
-        endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? ""
-        key = UserDefaults.standard.string(forKey: "key") ?? ""
+        token = UserDefaults.standard.string(forKey: "token") ?? ""
+    }
+
+    // MARK: - The door
+
+    func signIn(email address: String, password: String) async -> String? {
+        await door { try await TrackerAPI.signIn(email: address, password: password) }
+    }
+
+    func signUp(email address: String, password: String) async -> String? {
+        await door { try await TrackerAPI.signUp(email: address, password: password) }
+    }
+
+    /// Returns a message when it did not work, nil when it did.
+    private func door(_ work: @escaping () async throws -> (token: String, waiting: Bool)) async -> String? {
+        busy = true
+        defer { busy = false }
+        do {
+            let answer = try await work()
+            token = answer.token
+            waiting = answer.waiting
+            errorText = nil
+            if !waiting { await refresh() }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Asks the server whether this device is still welcome.
+    func checkDoor() async {
+        guard isSignedIn else { return }
+        do {
+            let who = try await api.check()
+            email = who.email
+            waiting = who.waiting
+            isAdmin = who.admin
+            errorText = nil
+        } catch TrackerAPI.Failure.signedOut {
+            signOut()
+        } catch {
+            /* offline — keep what we have and try again later */
+        }
+    }
+
+    func signOut() {
+        wentAway()
+        token = ""
+        email = ""
+        waiting = false
+        isAdmin = false
+        state = TrackerState()
+        extra = SheetExtra()
+        lastSync = nil
+        errorText = nil
     }
 
     /// Called when the window comes forward. Fetches once, then keeps checking.
@@ -346,6 +401,10 @@ final class Store {
             errorText = nil
             replanAlerts()
             if let note { flash(note) }
+        } catch TrackerAPI.Failure.waiting {
+            waiting = true
+        } catch TrackerAPI.Failure.signedOut {
+            signOut()
         } catch {
             errorText = error.localizedDescription
         }

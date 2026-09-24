@@ -4,28 +4,10 @@ import SwiftUI
 struct LifeTrackerApp: App {
     @State private var store = Store()
 
-    /// The sheet's "Connect the app" button opens lifetracker://connect?url=…&key=…
-    /// so the link and key arrive with one click instead of being typed.
-    private func connect(from url: URL) {
-        guard url.scheme == "lifetracker",
-              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-        let items = parts.queryItems ?? []
-        if let link = items.first(where: { $0.name == "url" })?.value, !link.isEmpty {
-            store.endpoint = link
-        }
-        if let key = items.first(where: { $0.name == "key" })?.value, !key.isEmpty {
-            store.key = key
-        }
-        if store.isConfigured {
-            Task { await store.refresh() }
-        }
-    }
-
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(store)
-                .onOpenURL { url in connect(from: url) }
         }
         #if os(macOS)
         .defaultSize(width: 980, height: 800)
@@ -54,30 +36,77 @@ struct RootView: View {
     #endif
 
     var body: some View {
-        content
-            .task {
-                if store.isConfigured {
-                    await store.refresh()
-                    Notifier.askOnce()          /* only once there is something to remind about */
-                } else {
-                    showSettings = true
-                }
+        Group {
+            if !store.isSignedIn {
+                SignInView()
+            } else if store.waiting {
+                WaitingView()
+            } else if store.isAdmin {
+                OwnerView()
+            } else {
+                content
             }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { store.cameToFront() } else { store.wentAway() }
+        }
+        .task {
+            await store.checkDoor()
+            if store.isConfigured {
+                await store.refresh()
+                Notifier.askOnce()          /* only once there is something to remind about */
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await store.checkDoor() }
+                store.cameToFront()
+            } else {
+                store.wentAway()
             }
-            .onChange(of: showSettings) { _, open in
-                if !open, store.isConfigured { Task { await store.refresh() } }
+        }
+        .onChange(of: store.token) { _, fresh in
+            if !fresh.isEmpty, store.isConfigured {
+                Task { await store.refresh(); Notifier.askOnce() }
             }
-            .onChange(of: store.key) { _, _ in
-                if store.isConfigured {
-                    Task { await store.refresh(); Notifier.askOnce() }
-                }
+        }
+        .sheet(isPresented: $showSettings) { accountSheet }
+    }
+
+    /// Who you are, and the way out.
+    private var accountSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Account").font(.title3.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(store.email.isEmpty ? "Signed in" : store.email)
+                    .font(.system(size: 15, weight: .medium))
+                Text(store.isAdmin ? "Owner — you can let new people in from the web app"
+                                   : "Signed in on this device")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
-            .overlay { if !store.isConfigured { connectCover } }
+
+            if let last = store.lastSync {
+                Text("Last synced \(last.formatted(date: .omitted, time: .shortened))")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            Button("Sign out", role: .destructive) {
+                store.signOut()
+                showSettings = false
+            }
+
+            HStack {
+                Spacer()
+                Button("Done") { showSettings = false }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
+        #if os(macOS)
+        .frame(minWidth: 360)
+        #endif
     }
 
     @ViewBuilder private var content: some View {
@@ -185,31 +214,10 @@ struct RootView: View {
     @ViewBuilder private var paneView: some View { paneScreen(store.pane) }
     #endif
 
-    /// Nothing can load without the link and key — say so plainly instead of showing an empty grid.
-    private var connectCover: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("Not connected yet")
-                .font(.title3.weight(.semibold))
-            Text("Add the web app link and key once — everything then comes straight from your sheet.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
-            Button("Connect") { showSettings = true }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(UI.canvas)
-    }
-
     private var settingsButton: some ToolbarContent {
         ToolbarItem {
-            Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                .help("Connection settings")
+            Button { showSettings = true } label: { Image(systemName: "person.crop.circle") }
+                .help("Account")
         }
     }
 }

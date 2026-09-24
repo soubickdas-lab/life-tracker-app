@@ -1,25 +1,72 @@
 import Foundation
 
-/// Talks to the Life Tracker web app (the Apps Script behind the Google Sheet).
-/// Every call answers with the whole fresh state, so the app never has to guess.
+/// Talks to Life Tracker's own server. The address is built in — there is nothing
+/// to paste — and who you are is carried by the token you get when you sign in.
 struct TrackerAPI: Sendable {
-    var endpoint: String
-    var key: String
+    static let home = "https://lifetracker.soubickdas.workers.dev"
 
-    var isConfigured: Bool { !endpoint.isEmpty && !key.isEmpty }
+    var token: String
+
+    var isConfigured: Bool { !token.isEmpty }
 
     enum Failure: LocalizedError {
         case notConfigured
         case badURL
+        case signedOut
+        case waiting
         case server(String)
 
         var errorDescription: String? {
             switch self {
-            case .notConfigured: return "Add the web app link and key in Settings first."
-            case .badURL:        return "That web app link does not look right."
+            case .notConfigured: return "Sign in first."
+            case .badURL:        return "That address does not look right."
+            case .signedOut:     return "Signed out — sign in again."
+            case .waiting:       return "Your account is waiting to be let in."
             case .server(let m): return m
             }
         }
+    }
+
+    // MARK: - The door
+
+    /// Returns the token, and whether the account is allowed in yet.
+    static func signIn(email: String, password: String) async throws -> (token: String, waiting: Bool) {
+        try await door(at: "/api/login", email: email, password: password)
+    }
+
+    static func signUp(email: String, password: String) async throws -> (token: String, waiting: Bool) {
+        try await door(at: "/api/signup", email: email, password: password)
+    }
+
+    private static func door(at path: String, email: String, password: String) async throws -> (token: String, waiting: Bool) {
+        guard let url = URL(string: home + path) else { throw Failure.badURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let reply = try JSONDecoder().decode(DoorReply.self, from: data)
+        guard reply.ok, let token = reply.token else {
+            throw Failure.server(reply.error ?? "That did not work.")
+        }
+        return (token, reply.status == "pending")
+    }
+
+    /// Whether this device's token still opens the door, and what the account may do.
+    func check() async throws -> (email: String, waiting: Bool, admin: Bool) {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard let url = URL(string: Self.home + "/api/me") else { throw Failure.badURL }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 401 { throw Failure.signedOut }
+        let reply = try JSONDecoder().decode(MeReply.self, from: data)
+        guard reply.ok else { throw Failure.signedOut }
+        return (reply.email ?? "", reply.status != "active", reply.admin ?? false)
     }
 
     // MARK: - Calls
@@ -148,31 +195,25 @@ struct TrackerAPI: Sendable {
 
     private func raw(_ params: [String: String]) async throws -> (TrackerState, String, SheetExtra?) {
         guard isConfigured else { throw Failure.notConfigured }
-        guard var parts = URLComponents(string: endpoint) else { throw Failure.badURL }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
 
-        var query = [URLQueryItem(name: "key", value: key)]
-        for (name, value) in params { query.append(URLQueryItem(name: name, value: value)) }
-        parts.queryItems = query
+        parts.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
         guard let url = parts.url else { throw Failure.badURL }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 60          /* the sheet redraws itself on a change */
+        request.timeoutInterval = 30
         request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
 
-        /* Apps Script now and then answers a redirect with an HTML page instead of
-           the JSON. It is always over by the next try, so ask once more before
-           bothering anyone about it. */
+        /* One quiet retry: a dropped connection should not become a red banner. */
         var reply: APIReply
         do {
             reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
         } catch is DecodingError {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            do {
-                reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
-            } catch is DecodingError {
-                throw Failure.server("Google answered with a page instead of data. Trying again usually fixes it.")
-            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
         }
+        if reply.pending == true { throw Failure.waiting }
         guard reply.ok, let state = reply.state else {
             throw Failure.server(reply.error ?? "The sheet said no.")
         }

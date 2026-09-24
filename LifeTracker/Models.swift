@@ -81,6 +81,7 @@ struct Note: Codable, Identifiable, Sendable {
 
 struct APIReply: Codable, Sendable {
     var ok: Bool
+    var pending: Bool?
     var said: String?
     var error: String?
     var state: TrackerState?
@@ -250,4 +251,23 @@ struct DashData: Codable, Sendable {
         habitPct = (try? c.decode(Int.self, forKey: .habitPct)) ?? 0
         bestStreak = (try? c.decode(Int.self, forKey: .bestStreak)) ?? 0
     }
+}
+
+/// What /api/login and /api/signup answer with.
+struct DoorReply: Codable, Sendable {
+    var ok: Bool
+    var token: String?
+    var email: String?
+    var status: String?
+    var error: String?
+}
+
+/// What /api/me answers with.
+struct MeReply: Codable, Sendable {
+    var ok: Bool
+    var email: String?
+    var status: String?
+    var admin: Bool?
+    var calendar: String?
+    var error: String?
 }
