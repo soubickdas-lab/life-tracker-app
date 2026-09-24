@@ -5,6 +5,8 @@
 set -e
 cd "$(dirname "$0")/.."
 MODE=${1:-ipa}
+APP_VERSION=$(cat VERSION 2>/dev/null || echo 1.0)
+BUILD_NUMBER=$(DEVELOPER_DIR=/Library/Developer/CommandLineTools git rev-list --count HEAD 2>/dev/null || echo 1)
 XC=/Applications/Xcode.app/Contents/Developer
 SWIFTC=$XC/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc
 SRC="LifeTracker/*.swift LifeTracker/Views/*.swift"
@@ -47,8 +49,8 @@ cat > "$OUT/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>com.soubick.lifetracker</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>1.0</string>
-	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
+	<key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
 	<key>MinimumOSVersion</key><string>18.0</string>
 	<key>LSRequiresIPhoneOS</key><true/>
 	<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>

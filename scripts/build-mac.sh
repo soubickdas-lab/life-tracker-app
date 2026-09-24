@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 export DEVELOPER_DIR=/Library/Developer/CommandLineTools
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 OUT=${1:-build/Life Tracker.app}
+APP_VERSION=$(cat VERSION 2>/dev/null || echo 1.0)
 
 rm -rf "$OUT"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
@@ -26,7 +27,7 @@ cat > "$OUT/Contents/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>com.soubick.lifetracker</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>LSMinimumSystemVersion</key><string>15.0</string>
 	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>

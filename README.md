@@ -79,16 +79,18 @@ in the same place — no cable, no re-export.
 Or skip the source entirely and hand SideStore the file:
 [dist/LifeTracker.ipa](dist/LifeTracker.ipa).
 
-**Shipping an update**
+**Shipping an update** — one command, from anywhere:
 
 ```bash
-./scripts/build-ios.sh ipa     # builds build/LifeTracker.ipa
-./scripts/make-source.sh       # copies it into dist/ and rewrites source.json
-git commit -am "new build" && git push
+./scripts/ship.sh 1.1
 ```
 
-Bump `CFBundleShortVersionString` in `scripts/build-ios.sh` first — SideStore only offers
-an update when the version number changes.
+It writes the new number into `VERSION` (both builds read that one file), rebuilds the IPA,
+refreshes `dist/`, commits and pushes. Leave the number off to re-ship the current version;
+it will warn you, because SideStore only offers an update when the number changes.
+
+The script exports `DEVELOPER_DIR` itself — without that, plain `git` goes through Xcode
+and stops to ask for a licence that has never been accepted on this Mac.
 
 ## Building without Xcode's licence
 
