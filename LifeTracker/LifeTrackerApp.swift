@@ -47,6 +47,7 @@ struct LifeTrackerApp: App {
 /// Tabs on the phone, one window with a toolbar on the Mac.
 struct RootView: View {
     @Environment(Store.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
     #if os(iOS)
     @AppStorage("phoneTab") private var phoneTab = 0   /* reopen where you left off */
@@ -55,8 +56,15 @@ struct RootView: View {
     var body: some View {
         content
             .task {
-                Notifier.askOnce()
-                if store.isConfigured { await store.refresh() } else { showSettings = true }
+                if store.isConfigured {
+                    await store.refresh()
+                    Notifier.askOnce()          /* only once there is something to remind about */
+                } else {
+                    showSettings = true
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { store.cameToFront() } else { store.wentAway() }
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -65,7 +73,9 @@ struct RootView: View {
                 if !open, store.isConfigured { Task { await store.refresh() } }
             }
             .onChange(of: store.key) { _, _ in
-                if store.isConfigured { Task { await store.refresh() } }
+                if store.isConfigured {
+                    Task { await store.refresh(); Notifier.askOnce() }
+                }
             }
             .overlay { if !store.isConfigured { connectCover } }
     }

@@ -26,9 +26,33 @@ final class Store {
     var api: TrackerAPI { TrackerAPI(endpoint: endpoint, key: key) }
     var isConfigured: Bool { api.isConfigured }
 
+    /// Runs while the app is in front, so a change made on the phone shows up here
+    /// without anyone pressing anything.
+    private var poller: Task<Void, Never>?
+
     init() {
         endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? ""
         key = UserDefaults.standard.string(forKey: "key") ?? ""
+    }
+
+    /// Called when the window comes forward. Fetches once, then keeps checking.
+    func cameToFront() {
+        guard isConfigured else { return }
+        Task { await refresh(quietly: true) }
+        poller?.cancel()
+        poller = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 120 * 1_000_000_000)   /* two minutes */
+                guard !Task.isCancelled, let self, self.isConfigured, !self.busy, !self.loading else { continue }
+                await self.refresh(quietly: true)
+            }
+        }
+    }
+
+    /// Nothing to poll for while the app is hidden — the sheet is not going anywhere.
+    func wentAway() {
+        poller?.cancel()
+        poller = nil
     }
 
     var day: DayBlock? {

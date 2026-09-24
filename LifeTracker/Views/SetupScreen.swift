@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// The ⚙️ Setup tab in full: settings, the habit list, categories — plus the 🧾 Log.
 struct SetupScreen: View {
@@ -8,15 +9,86 @@ struct SetupScreen: View {
     @State private var newCategory = ""
     @State private var showSecrets = false
     @State private var showLog = false
+    @State private var alerts: UNAuthorizationStatus = .notDetermined
+    @State private var waiting = 0
 
     var body: some View {
         Page {
             PageTitle("Setup", subtitle: "Everything the sheet's ⚙️ tab holds")
+            reminders
             settings
             habits
             categories
         }
         .refreshable { await store.refresh(quietly: true) }
+        .task { await readAlertState() }
+    }
+
+    // MARK: - Reminders
+
+    /// Says plainly whether the alerts before a task can actually arrive, and how
+    /// many are queued for today — the one thing that is invisible otherwise.
+    private var reminders: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Reminders").font(.system(size: 15, weight: .semibold))
+                    Spacer()
+                    Tag(text: alertLabel, tint: alertTint, strong: true)
+                }
+                Text(alertBlurb)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    if alerts == .notDetermined {
+                        Button("Turn reminders on") {
+                            Task { alerts = await Notifier.ask(); await readAlertState() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else if alerts == .denied {
+                        Button("Open notification settings") { Notifier.openSystemSettings() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Button("Check again") { Task { await readAlertState() } }
+                }
+            }
+        }
+    }
+
+    private var alertLabel: String {
+        switch alerts {
+        case .authorized, .provisional, .ephemeral: return "\(waiting) set for today"
+        case .denied:                               return "blocked"
+        default:                                    return "not asked yet"
+        }
+    }
+
+    private var alertTint: Color {
+        switch alerts {
+        case .authorized, .provisional, .ephemeral: return waiting > 0 ? UI.mint : UI.amber
+        case .denied:                               return UI.rose
+        default:                                    return UI.amber
+        }
+    }
+
+    private var alertBlurb: String {
+        switch alerts {
+        case .authorized, .provisional, .ephemeral:
+            return waiting > 0
+                ? "You will be nudged \(store.reminderLead) minutes before each timed task left today."
+                : "Allowed, but nothing is queued — either today's timed tasks are done, or their time has already passed."
+        case .denied:
+            return "This device is refusing them. Turn Life Tracker back on in notification settings, then press Check again."
+        default:
+            return "Not asked yet on this device. Turn them on to be nudged \(store.reminderLead) minutes before a timed task."
+        }
+    }
+
+    private func readAlertState() async {
+        alerts = await Notifier.state()
+        waiting = await Notifier.waiting()
     }
 
     // MARK: - Settings

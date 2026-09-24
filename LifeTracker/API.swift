@@ -148,8 +148,20 @@ struct TrackerAPI: Sendable {
         request.timeoutInterval = 60          /* the sheet redraws itself on a change */
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let reply = try JSONDecoder().decode(APIReply.self, from: data)
+        /* Apps Script now and then answers a redirect with an HTML page instead of
+           the JSON. It is always over by the next try, so ask once more before
+           bothering anyone about it. */
+        var reply: APIReply
+        do {
+            reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
+        } catch is DecodingError {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            do {
+                reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
+            } catch is DecodingError {
+                throw Failure.server("Google answered with a page instead of data. Trying again usually fixes it.")
+            }
+        }
         guard reply.ok, let state = reply.state else {
             throw Failure.server(reply.error ?? "The sheet said no.")
         }

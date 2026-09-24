@@ -1,5 +1,10 @@
 import Foundation
 import UserNotifications
+#if os(iOS)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Local reminders for today's timed tasks: one alert a few minutes before each,
 /// re-planned every time the sheet answers so it always matches what is on screen.
@@ -7,10 +12,53 @@ import UserNotifications
 enum Notifier {
     private static let prefix = "task-"
 
-    /// Asked for once, the first time the app loads a day.
+    /// Asked for once, the first time the app has a day to show — never while the
+    /// connect sheet is up, where the alert used to land on top and get dismissed.
     static func askOnce() {
         guard Bundle.main.bundleIdentifier != nil else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        Task {
+            let status = await state()
+            guard status == .notDetermined else { return }
+            _ = try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound])
+        }
+    }
+
+    /// Asked again from Setup, by the button.
+    @discardableResult
+    static func ask() async -> UNAuthorizationStatus {
+        guard Bundle.main.bundleIdentifier != nil else { return .denied }
+        if await state() == .notDetermined {
+            _ = try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound])
+        }
+        return await state()
+    }
+
+    /// What iOS/macOS currently allows.
+    static func state() async -> UNAuthorizationStatus {
+        guard Bundle.main.bundleIdentifier != nil else { return .denied }
+        return await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
+    /// How many reminders are actually waiting — the honest proof that it works.
+    static func waiting() async -> Int {
+        guard Bundle.main.bundleIdentifier != nil else { return 0 }
+        let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        return pending.filter { $0.identifier.hasPrefix(prefix) }.count
+    }
+
+    /// Opens the page where the switch lives, once the answer was no.
+    static func openSystemSettings() {
+        #if os(iOS)
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+        #else
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
     }
 
     /// Clears the old plan and lays out a fresh one for what is still ahead today.
