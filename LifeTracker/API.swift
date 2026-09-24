@@ -55,7 +55,7 @@ struct TrackerAPI: Sendable {
     }
 
     /// Whether this device's token still opens the door, and what the account may do.
-    func check() async throws -> (email: String, waiting: Bool, admin: Bool) {
+    func check() async throws -> (email: String, waiting: Bool, admin: Bool, calendar: String) {
         guard isConfigured else { throw Failure.notConfigured }
         guard let url = URL(string: Self.home + "/api/me") else { throw Failure.badURL }
         var request = URLRequest(url: url)
@@ -66,7 +66,7 @@ struct TrackerAPI: Sendable {
         if (response as? HTTPURLResponse)?.statusCode == 401 { throw Failure.signedOut }
         let reply = try JSONDecoder().decode(MeReply.self, from: data)
         guard reply.ok else { throw Failure.signedOut }
-        return (reply.email ?? "", reply.status != "active", reply.admin ?? false)
+        return (reply.email ?? "", reply.status != "active", reply.admin ?? false, reply.calendar ?? "")
     }
 
     // MARK: - Calls

@@ -23,6 +23,7 @@ final class Store {
     var email = ""
     var waiting = false          /* signed in, but the account has not been let in yet */
     var isAdmin = false
+    var calendarLink = ""
 
     var api: TrackerAPI { TrackerAPI(token: token) }
     var isConfigured: Bool { api.isConfigured && !waiting }
@@ -70,6 +71,7 @@ final class Store {
             email = who.email
             waiting = who.waiting
             isAdmin = who.admin
+            calendarLink = who.calendar
             errorText = nil
         } catch TrackerAPI.Failure.signedOut {
             signOut()
@@ -84,6 +86,7 @@ final class Store {
         email = ""
         waiting = false
         isAdmin = false
+        calendarLink = ""
         state = TrackerState()
         extra = SheetExtra()
         lastSync = nil

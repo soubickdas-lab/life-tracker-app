@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 @main
 struct LifeTrackerApp: App {
@@ -31,6 +36,7 @@ struct RootView: View {
     @Environment(Store.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
+    @State private var copied = false
     #if os(iOS)
     @AppStorage("phoneTab") private var phoneTab = 0   /* reopen where you left off */
     #endif
@@ -70,6 +76,16 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) { accountSheet }
     }
 
+    private func copyCalendar() {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(store.calendarLink, forType: .string)
+        #else
+        UIPasteboard.general.string = store.calendarLink
+        #endif
+        copied = true
+    }
+
     /// Who you are, and the way out.
     private var accountSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -82,6 +98,32 @@ struct RootView: View {
                                    : "Signed in on this device")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+            }
+
+            if !store.calendarLink.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Calendar").font(.system(size: 14, weight: .medium))
+                    Text("Subscribe to this in Calendar and your timed tasks show up there. It refreshes itself every few minutes.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("Copy calendar link") { copyCalendar() }
+                        #if os(macOS)
+                        Button("Subscribe now") {
+                            if let url = URL(string: store.calendarLink.replacingOccurrences(
+                                of: "https://", with: "webcal://")) {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        #endif
+                    }
+                    if copied {
+                        Text("Copied — paste it into Calendar ▸ New Calendar Subscription")
+                            .font(.system(size: 11)).foregroundStyle(UI.mint)
+                    }
+                }
             }
 
             if let last = store.lastSync {
