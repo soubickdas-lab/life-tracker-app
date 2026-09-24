@@ -18,6 +18,7 @@ if [ "$VERSION" = "$SHIPPED" ]; then
   echo "    Run:  ./scripts/ship.sh 1.1"
 fi
 
+./scripts/build-mac.sh          # the Mac app, or it quietly stays on an old version
 ./scripts/build-ios.sh ipa
 ./scripts/make-source.sh
 

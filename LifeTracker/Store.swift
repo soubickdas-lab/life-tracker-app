@@ -56,6 +56,7 @@ final class Store {
             token = answer.token
             waiting = answer.waiting
             errorText = nil
+            await checkDoor()               /* name, calendar link, whether it is the owner */
             if !waiting { await refresh() }
             return nil
         } catch {
