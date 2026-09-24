@@ -26,6 +26,15 @@ struct DayScreen: View {
             }
         }
         .overlay(alignment: .top) { Banner() }
+        .contentShape(Rectangle())
+        .onTapGesture { putEditorsAway() }           /* a click on empty space closes the box */
+        .onChange(of: focus) { was, now in
+            guard was != nil, now == nil else { return }
+            putEditorsAway()                          /* tabbed or clicked away */
+        }
+        #if os(macOS)
+        .onExitCommand { cancelEditors() }            /* Escape drops what was typed */
+        #endif
         .refreshable { await store.refresh(quietly: true) }
     }
 
@@ -198,6 +207,7 @@ struct DayScreen: View {
     /// An invisible button under the row, so a click anywhere on it ticks the task.
     private func tickLayer(_ task: TaskItem, busy: Bool) -> some View {
         Button {
+            if editing != nil || clockEdit != nil { putEditorsAway(); return }
             guard !task.pending, !busy else { return }
             Task { await store.toggle(task) }
         } label: {
@@ -316,6 +326,25 @@ struct DayScreen: View {
         focus = nil
         if clean.isEmpty { Task { await store.delete(task) } }
         else if clean != task.task { Task { await store.rename(task, to: clean) } }
+    }
+
+    /// Saves and shuts whichever box is open. Called when the click, or the focus, goes elsewhere.
+    private func putEditorsAway() {
+        let tasks = day?.tasks ?? []
+        if let id = clockEdit {
+            if let task = tasks.first(where: { $0.id == id }) { commitTime(task) } else { clockEdit = nil }
+        }
+        if let id = editing {
+            if let task = tasks.first(where: { $0.id == id }) { commit(task) } else { editing = nil }
+        }
+        focus = nil
+    }
+
+    /// Escape: shut the box and keep what the sheet already had.
+    private func cancelEditors() {
+        clockEdit = nil
+        editing = nil
+        focus = nil
     }
 
     /// A newly shown field is not in the responder chain yet — focus it a tick later.
