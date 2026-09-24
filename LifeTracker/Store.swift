@@ -74,7 +74,7 @@ final class Store {
         if !quietly { loading = true }
         defer { loading = false }
         let client = api
-        await runFull(note: nil) { try await client.full() }
+        await runFull(note: nil, quiet: quietly) { try await client.full() }
     }
 
     // MARK: - Changes
@@ -182,6 +182,11 @@ final class Store {
     }
 
     func logWeight(_ kg: String) async {
+        state.weight = kg                                   /* shows before the sheet answers */
+        let today = Self.stamp.string(from: Date())
+        if let row = extra.body.firstIndex(where: { $0.date == today }) {
+            extra.body[row].wt = kg
+        }
         let client = api
         await run(note: "⚖️ \(kg) kg") { try await client.logWeight(kg) }
     }
@@ -189,26 +194,48 @@ final class Store {
     func addNote(_ text: String) async {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        state.notes.insert(Note(when: "just now", text: clean), at: 0)
         let client = api
         await run(note: "🗒 Noted") { try await client.addNote(clean) }
     }
 
     func setRepeat(_ task: TaskItem, _ on: Bool) async {
+        for day in state.days.indices {
+            if let row = state.days[day].tasks.firstIndex(where: { $0.id == task.id }) {
+                state.days[day].tasks[row].repeats = on
+            }
+        }
         let client = api
         await runFull(note: nil) { try await client.setRepeat(task.id, on) }
     }
 
     func schedule(_ text: String, date: String, slot: String) async {
+        extra.scheduled.append(ScheduledItem(id: "pending-" + UUID().uuidString, task: text,
+                                             date: date, pretty: date, slot: slot, done: false))
+        extra.scheduled.sort { $0.date < $1.date }
         let client = api
         await runFull(note: "🗓️ \(text)") { try await client.schedule(text, date: date, slot: slot) }
     }
 
     func setSetting(_ name: String, _ value: String) async {
+        if let row = extra.setup.firstIndex(where: { $0.name == name }) {
+            extra.setup[row].value = value
+        }
         let client = api
         await runFull(note: "⚙️ \(name)") { try await client.setSetting(name, value) }
     }
 
     func saveHabit(slot: Int, name: String, target: String, active: Bool, remove: Bool = false) async {
+        if remove {
+            extra.habitCfg.removeAll { $0.slot == slot }
+            state.habits.removeAll { $0.name == name }
+        } else if let row = extra.habitCfg.firstIndex(where: { $0.slot == slot }) {
+            extra.habitCfg[row].name = name
+            extra.habitCfg[row].target = target
+            extra.habitCfg[row].active = active
+        } else {
+            extra.habitCfg.append(HabitConfig(slot: slot, name: name, target: target, active: active))
+        }
         let client = api
         await runFull(note: remove ? "🗑 \(name)" : "🔥 \(name)") {
             try await client.saveHabit(slot: slot, name: name, target: target, active: active, remove: remove)
@@ -216,11 +243,22 @@ final class Store {
     }
 
     func category(_ text: String, remove: Bool) async {
+        if remove { extra.categories.removeAll { $0 == text } }
+        else if !extra.categories.contains(text) { extra.categories.append(text) }
         let client = api
         await runFull(note: remove ? "🗑 \(text)" : "🏷 \(text)") { try await client.category(text, remove: remove) }
     }
 
     func saveGoal(row: Int, fields: [String: String], remove: Bool = false) async {
+        if remove {
+            extra.goals.removeAll { $0.row == row }
+        } else if let index = extra.goals.firstIndex(where: { $0.row == row }) {
+            apply(fields, to: &extra.goals[index])
+        } else {
+            var fresh = Goal(row: row, goal: "", why: "", target: "", status: "Idea", pct: 0, notes: "")
+            apply(fields, to: &fresh)
+            extra.goals.append(fresh)
+        }
         let client = api
         await runFull(note: remove ? "🗑 Goal removed" : "🎯 Saved") {
             try await client.saveGoal(row: row, fields: fields, remove: remove)
@@ -228,15 +266,44 @@ final class Store {
     }
 
     func saveBody(date: String, fields: [String: String]) async {
+        var row = extra.body.first { $0.date == date }
+            ?? BodyRow(date: date, pretty: date, wt: "", waist: "", chest: "", arm: "", fat: "", notes: "")
+        row.wt = fields["wt"] ?? row.wt
+        row.waist = fields["waist"] ?? row.waist
+        row.chest = fields["chest"] ?? row.chest
+        row.arm = fields["arm"] ?? row.arm
+        row.fat = fields["fat"] ?? row.fat
+        row.notes = fields["notes"] ?? row.notes
+        if let at = extra.body.firstIndex(where: { $0.date == date }) { extra.body[at] = row }
+        else { extra.body.insert(row, at: 0) }
+        if date == Self.stamp.string(from: Date()), let wt = fields["wt"], !wt.isEmpty { state.weight = wt }
         let client = api
         await runFull(note: "⚖️ Saved") { try await client.saveBody(date: date, fields: fields) }
     }
 
+    /// Copies whatever the screen sent into the goal it belongs to.
+    private func apply(_ fields: [String: String], to goal: inout Goal) {
+        goal.goal = fields["goal"] ?? goal.goal
+        goal.why = fields["why"] ?? goal.why
+        goal.target = fields["target"] ?? goal.target
+        goal.status = fields["status"] ?? goal.status
+        goal.notes = fields["notes"] ?? goal.notes
+        if let pct = fields["pct"], let value = Int(pct) { goal.pct = value }
+    }
+
+    static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     // MARK: - Shared handling
 
-    private func runFull(note: String?, _ work: @escaping () async throws -> (TrackerState, SheetExtra)) async {
-        busy = true
-        defer { busy = false }
+    private func runFull(note: String?, quiet: Bool = false,
+                         _ work: @escaping () async throws -> (TrackerState, SheetExtra)) async {
+        if !quiet { busy = true }
+        defer { if !quiet { busy = false } }
         do {
             let (fresh, more) = try await work()
             state = fresh

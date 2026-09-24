@@ -10,7 +10,7 @@ enum UI {
     static let violet = Color(red: 0.55, green: 0.40, blue: 0.93)
     static let sky    = Color(red: 0.22, green: 0.60, blue: 0.95)
 
-    static let radius: CGFloat = 18
+    static let radius: CGFloat = 16
     #if os(macOS)
     static let rowHeight: CGFloat = 46
     #else
@@ -25,7 +25,7 @@ enum UI {
     static let canvas  = Color(uiColor: .systemGroupedBackground)
     #endif
 
-    static let hairline = Color.primary.opacity(0.07)
+    static let hairline = Color.primary.opacity(0.055)
 
     #if os(macOS)
     static let gutter: CGFloat = 22
@@ -46,9 +46,9 @@ struct Panel<Content: View>: View {
             .background(UI.surface, in: RoundedRectangle(cornerRadius: UI.radius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: UI.radius, style: .continuous)
-                    .stroke(UI.hairline, lineWidth: 1)
+                    .stroke(UI.hairline, lineWidth: 0.8)
             )
-            .shadow(color: .black.opacity(0.05), radius: 12, y: 4)
+            .shadow(color: .black.opacity(0.035), radius: 9, y: 3)
     }
 }
 
@@ -68,7 +68,8 @@ struct PageTitle: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 27, weight: .bold, design: .rounded))
+                    .tracking(-0.4)
                 if let subtitle {
                     Text(subtitle)
                         .font(.system(size: 13))
@@ -89,7 +90,7 @@ struct Tag: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(tint.opacity(strong ? 0.18 : 0.10), in: Capsule())
@@ -107,9 +108,10 @@ struct TickCircle: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .strokeBorder(on ? tint : Color.secondary.opacity(0.35), lineWidth: 1.6)
+                    .strokeBorder(on ? tint : Color.secondary.opacity(0.32), lineWidth: 1.7)
                     .background(Circle().fill(on ? tint : Color.primary.opacity(0.001)))
                     .frame(width: 21, height: 21)
+                    .shadow(color: on ? tint.opacity(0.35) : .clear, radius: 5, y: 1)
                 if on {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .bold))
@@ -207,7 +209,7 @@ struct Page<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 content
             }
             .padding(UI.gutter)
@@ -215,5 +217,46 @@ struct Page<Content: View>: View {
             .frame(maxWidth: .infinity)
         }
         .background(UI.canvas)
+        .overlay(alignment: .top) { StatusStrip() }
+    }
+}
+
+/// The one line that tells you where a change is: on screen already, being saved,
+/// or refused. Sits at the top of every page, so no screen has to say it itself.
+struct StatusStrip: View {
+    @Environment(Store.self) private var store
+
+    var body: some View {
+        Group {
+            if let text = store.toast ?? store.errorText {
+                pill(text, tint: store.errorText == nil ? UI.accent : UI.rose, working: false)
+                    .onTapGesture { store.toast = nil; store.errorText = nil }
+            } else if store.busy {
+                pill("Updating…", tint: UI.accent, working: true)
+            }
+        }
+        .padding(.top, 10)
+        .animation(.snappy(duration: 0.2), value: store.busy)
+        .animation(.snappy(duration: 0.2), value: store.toast)
+        .animation(.snappy(duration: 0.2), value: store.errorText)
+    }
+
+    private func pill(_ text: String, tint: Color, working: Bool) -> some View {
+        HStack(spacing: 7) {
+            if working {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+            }
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(tint, in: Capsule())
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.16), radius: 9, y: 3)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }

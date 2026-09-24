@@ -26,7 +26,6 @@ struct DayScreen: View {
                 Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your sheet…") }
             }
         }
-        .overlay(alignment: .top) { Banner() }
         .contentShape(Rectangle())
         .onTapGesture { putEditorsAway() }           /* a click on empty space closes the box */
         .onChange(of: focus) { was, now in
@@ -104,18 +103,20 @@ struct DayScreen: View {
                 #if os(macOS)
                 HStack(spacing: 8) {
                     name(task)
-                    Spacer(minLength: 8)
-                    marks(task)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if task.carried { Tag(text: "carried", tint: UI.amber) }
                 }
                 .frame(maxWidth: .infinity)
                 .allowsHitTesting(false)          /* the whole row ticks — let clicks fall through */
                 #else
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     name(task)
+                        .allowsHitTesting(false)
                     if !timing {
                         HStack(spacing: 6) {
-                            marks(task)
+                            if task.carried { Tag(text: "carried", tint: UI.amber) }
                             timeControl(task, timing: false)
+                            repeatButton(task)
                         }
                     }
                 }
@@ -123,8 +124,12 @@ struct DayScreen: View {
                 #endif
             }
 
+            /* on the Mac the time and the repeat switch live on the right of the row */
             #if os(macOS)
-            if !naming { timeControl(task, timing: timing) }
+            if !naming {
+                timeControl(task, timing: timing)
+                repeatButton(task)
+            }
             #else
             if timing { timeControl(task, timing: true) }
             #endif
@@ -155,6 +160,16 @@ struct DayScreen: View {
         .padding(.horizontal, 14)
         .frame(height: UI.rowHeight)
         .opacity(task.pending ? 0.6 : 1)
+        .background(alignment: .leading) {
+            /* a repeating task wears a violet edge, so the daily ones read at a glance */
+            if task.repeats {
+                Rectangle()
+                    .fill(UI.violet)
+                    .frame(width: 3)
+                    .clipShape(Capsule())
+                    .padding(.vertical, 7)
+            }
+        }
         .background(tickLayer(task, busy: naming || timing))
     }
 
@@ -169,14 +184,22 @@ struct DayScreen: View {
         }
     }
 
-    /// The little marks a task carries: brought over from yesterday, repeats daily.
-    @ViewBuilder private func marks(_ task: TaskItem) -> some View {
-        if task.carried { Tag(text: "carried", tint: UI.amber) }
-        if task.repeats {
+    /// Tap it and the task comes back tomorrow, and every day after.
+    private func repeatButton(_ task: TaskItem) -> some View {
+        Button {
+            guard !task.pending else { return }
+            Task { await store.setRepeat(task, !task.repeats) }
+        } label: {
             Image(systemName: "repeat")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(UI.violet)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(task.repeats ? .white : Color.secondary.opacity(0.5))
+                .frame(width: 25, height: 25)
+                .background(task.repeats ? UI.violet : Color.primary.opacity(0.05), in: Circle())
+                .contentShape(Circle())
         }
+        .buttonStyle(.plain)
+        .animation(.snappy(duration: 0.18), value: task.repeats)
+        .help(task.repeats ? "Repeats every day — tap to stop" : "Repeat this every day")
     }
 
     /// The time: a tap target that turns into a box you can type in.
@@ -196,7 +219,7 @@ struct DayScreen: View {
                 clockEdit = task.id
             } label: {
                 Tag(text: task.when,
-                    tint: task.slot.isEmpty ? .secondary : UI.sky,
+                    tint: task.slot.isEmpty ? .secondary : (task.repeats ? UI.violet : UI.sky),
                     strong: !task.slot.isEmpty)
                     .fixedSize()
             }
@@ -205,7 +228,6 @@ struct DayScreen: View {
         }
     }
 
-    /// An invisible button under the row, so a click anywhere on it ticks the task.
     private func tickLayer(_ task: TaskItem, busy: Bool) -> some View {
         Button {
             if editing != nil || clockEdit != nil { putEditorsAway(); return }
@@ -398,26 +420,6 @@ struct DayScreen: View {
         let name = newTask, slot = newSlot
         newTask = ""; newSlot = ""
         Task { await store.add(name, slot: slot, to: day) }
-    }
-}
-
-/// The little message that slides down after something changes.
-struct Banner: View {
-    @Environment(Store.self) private var store
-
-    var body: some View {
-        if let text = store.toast ?? store.errorText {
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 15)
-                .padding(.vertical, 10)
-                .background(store.errorText == nil ? UI.accent : UI.rose, in: Capsule())
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-                .padding(.top, 12)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .onTapGesture { store.toast = nil; store.errorText = nil }
-        }
     }
 }
 
