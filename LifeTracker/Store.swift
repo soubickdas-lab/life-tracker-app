@@ -301,13 +301,13 @@ final class Store {
     // MARK: - Shared handling
 
     private func runFull(note: String?, quiet: Bool = false,
-                         _ work: @escaping () async throws -> (TrackerState, SheetExtra)) async {
+                         _ work: @escaping () async throws -> (TrackerState, SheetExtra?)) async {
         if !quiet { busy = true }
         defer { if !quiet { busy = false } }
         do {
             let (fresh, more) = try await work()
             state = fresh
-            extra = more
+            if let more { extra = more }        /* a light reply leaves the other tabs alone */
             lastSync = Date()
             errorText = nil
             Notifier.reschedule(state, leadMinutes: reminderLead)

@@ -33,37 +33,37 @@ struct TrackerAPI: Sendable {
     }
 
     func setDone(_ id: String, _ done: Bool) async throws -> TrackerState {
-        try await send(["api": "toggle", "id": id, "done": done ? "true" : "false"])
+        try await send(["api": "toggle", "id": id, "done": done ? "true" : "false", "light": "1"])
     }
 
     func delete(_ id: String) async throws -> TrackerState {
-        try await send(["api": "delete", "id": id])
+        try await send(["api": "delete", "id": id, "light": "1"])
     }
 
     func rename(_ id: String, to text: String) async throws -> TrackerState {
-        try await send(["api": "rename", "id": id, "text": text])
+        try await send(["api": "rename", "id": id, "text": text, "light": "1"])
     }
 
     func move(_ id: String, to when: String) async throws -> (TrackerState, String) {
-        try await sendWithReply(["api": "move", "id": id, "when": when])
+        try await sendWithReply(["api": "move", "id": id, "when": when, "light": "1"])
     }
 
     /// Sets the time on one exact task. Blank slot = all day.
     /// Older copies of the sheet script do not know "time" yet, so it falls back to "move".
     func setTime(_ id: String, slot: String) async throws -> (TrackerState, String) {
         do {
-            return try await sendWithReply(["api": "time", "id": id, "slot": slot])
+            return try await sendWithReply(["api": "time", "id": id, "slot": slot, "light": "1"])
         } catch Failure.server(let message) where message.lowercased().contains("unknown api") {
             return try await sendWithReply(["api": "move", "id": id,
                                             "when": slot.isEmpty ? "all day" : slot])
         }
     }
 
-    func setHabit(_ name: String, _ done: Bool, on day: String = "") async throws -> (TrackerState, SheetExtra) {
-        var params = ["api": "habit", "name": name, "done": done ? "true" : "false"]
+    func setHabit(_ name: String, _ done: Bool, on day: String = "") async throws -> (TrackerState, SheetExtra?) {
+        var params = ["api": "habit", "name": name, "done": done ? "true" : "false", "light": "1"]
         if !day.isEmpty { params["date"] = day }
         let r = try await raw(params)
-        return (r.0, r.2 ?? SheetExtra())
+        return (r.0, r.2)
     }
 
     func logWeight(_ kg: String) async throws -> TrackerState {
@@ -80,9 +80,9 @@ struct TrackerAPI: Sendable {
         return (reply.0, reply.2 ?? SheetExtra())
     }
 
-    func setRepeat(_ id: String, _ on: Bool) async throws -> (TrackerState, SheetExtra) {
-        let r = try await raw(["api": "repeat", "id": id, "on": on ? "true" : "false"])
-        return (r.0, r.2 ?? SheetExtra())
+    func setRepeat(_ id: String, _ on: Bool) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "repeat", "id": id, "on": on ? "true" : "false", "light": "1"])
+        return (r.0, r.2)
     }
 
     func schedule(_ text: String, date: String, slot: String) async throws -> (TrackerState, SheetExtra) {
