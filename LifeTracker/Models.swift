@@ -66,8 +66,10 @@ struct Habit: Codable, Identifiable, Sendable, Equatable {
     var target: String
     var done: Bool
     var streak: Int
+    var every: Int = 1                 /* every day, every 2nd day, … */
 
     var id: String { name }
+    var rhythm: String { every <= 1 ? "" : "every \(every) days" }
 }
 
 struct Note: Codable, Identifiable, Sendable {
@@ -131,6 +133,7 @@ struct HabitConfig: Codable, Identifiable, Sendable, Equatable {
     var name: String
     var target: String
     var active: Bool
+    var every: Int = 1
 
     var id: Int { slot }
 }
@@ -212,11 +215,16 @@ struct HabitGridRow: Codable, Identifiable, Sendable, Equatable {
     var name: String
     var target: String
     var marks: [Bool]
+    var due: [Bool] = []               /* the days this one is actually meant to happen */
+    var every: Int = 1
+    var owed: Int = 0
     var done: Int
     var streak: Int
     var pct: Int
 
     var id: String { name }
+    var rhythm: String { every <= 1 ? "" : "every \(every) days" }
+    func isDue(_ index: Int) -> Bool { index < due.count ? due[index] : true }
 }
 
 struct DashData: Codable, Sendable {

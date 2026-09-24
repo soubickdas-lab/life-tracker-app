@@ -96,6 +96,59 @@ enum Notifier {
         }
     }
 
+    /// Good morning at 8 and good night at 10 — what the day holds, and how it went.
+    /// Re-written every time the sheet answers, so the wording is as fresh as the app is.
+    static func bookends(_ state: TrackerState, habitsDone: Int, habitsTotal: Int) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let centre = UNUserNotificationCenter.current()
+        centre.removePendingNotificationRequests(withIdentifiers: [morningId, nightId])
+
+        let calendar = Calendar.current
+        let now = Date()
+        guard let today = state.todayBlock,
+              let eight = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: now),
+              let ten = calendar.date(bySettingHour: 22, minute: 0, second: 0, of: now) else { return }
+
+        if eight > now {
+            add(centre, id: morningId, title: "Good morning ☀️",
+                body: morningLine(today, habits: habitsTotal), at: eight)
+        } else if let tomorrow = state.days.first(where: { $0.label == "Tomorrow" }),
+                  let nextEight = calendar.date(byAdding: .day, value: 1, to: eight) {
+            add(centre, id: morningId, title: "Good morning ☀️",
+                body: morningLine(tomorrow, habits: habitsTotal), at: nextEight)
+        }
+
+        if ten > now {
+            add(centre, id: nightId, title: "Good night 🌙",
+                body: nightLine(today, habitsDone: habitsDone, habitsTotal: habitsTotal), at: ten)
+        }
+    }
+
+    private static let morningId = "day-morning"
+    private static let nightId = "day-night"
+
+    private static func morningLine(_ day: DayBlock, habits: Int) -> String {
+        let open = day.tasks.filter { !$0.done }
+        if open.isEmpty {
+            return habits > 0 ? "Nothing booked — just \(habits) habits." : "Nothing booked today."
+        }
+        var line = "\(open.count) " + (open.count == 1 ? "thing" : "things") + " to do"
+        if let first = open.first(where: { !$0.slot.isEmpty }) {
+            line += " · first up \(first.task) at \(first.slot)"
+        }
+        if habits > 0 { line += " · \(habits) habits" }
+        return line
+    }
+
+    private static func nightLine(_ day: DayBlock, habitsDone: Int, habitsTotal: Int) -> String {
+        let done = day.tasks.filter(\.done).count
+        var line = "\(done) of \(day.tasks.count) done"
+        if habitsTotal > 0 { line += " · habits \(habitsDone)/\(habitsTotal)" }
+        let left = day.tasks.count - done
+        line += left == 0 ? " · a clean sweep." : " · \(left) rolls over."
+        return line
+    }
+
     /// One alert, at one moment.
     private static func add(_ centre: UNUserNotificationCenter,
                             id: String, title: String, body: String, at when: Date) {

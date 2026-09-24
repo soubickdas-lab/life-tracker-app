@@ -258,6 +258,24 @@ final class Store {
         }
     }
 
+    /// How often a habit should come round. Shown at once, then saved.
+    func setHabitEvery(_ name: String, _ every: Int) async {
+        let n = max(1, min(30, every))
+        if let row = extra.habitCfg.firstIndex(where: { $0.name == name }) {
+            extra.habitCfg[row].every = n
+        }
+        if let row = extra.habitGrid.rows.firstIndex(where: { $0.name == name }) {
+            extra.habitGrid.rows[row].every = n
+        }
+        if let row = state.habits.firstIndex(where: { $0.name == name }) {
+            state.habits[row].every = n
+        }
+        let client = api
+        await runFull(note: n == 1 ? "📅 \(name) — every day" : "📅 \(name) — every \(n) days") {
+            try await client.setHabitEvery(name, n)
+        }
+    }
+
     func category(_ text: String, remove: Bool) async {
         if remove { extra.categories.removeAll { $0 == text } }
         else if !extra.categories.contains(text) { extra.categories.append(text) }
@@ -326,7 +344,7 @@ final class Store {
             if let more { extra = more }        /* a light reply leaves the other tabs alone */
             lastSync = Date()
             errorText = nil
-            Notifier.reschedule(state, leadMinutes: reminderLead)
+            replanAlerts()
             if let note { flash(note) }
         } catch {
             errorText = error.localizedDescription
@@ -340,7 +358,7 @@ final class Store {
             state = try await work()
             lastSync = Date()
             errorText = nil
-            Notifier.reschedule(state, leadMinutes: reminderLead)
+            replanAlerts()
             if let note { flash(note) }
         } catch {
             errorText = error.localizedDescription
@@ -355,11 +373,17 @@ final class Store {
             state = fresh
             lastSync = Date()
             errorText = nil
-            Notifier.reschedule(state, leadMinutes: reminderLead)
+            replanAlerts()
             flash(said.split(separator: "\n").first.map(String.init) ?? "Done")
         } catch {
             errorText = error.localizedDescription
         }
+    }
+
+    /// The task nudges and the two daily bookends, always planned together.
+    private func replanAlerts() {
+        Notifier.reschedule(state, leadMinutes: reminderLead)
+        Notifier.bookends(state, habitsDone: habitsDone, habitsTotal: state.habits.count)
     }
 
     private func flash(_ text: String) {

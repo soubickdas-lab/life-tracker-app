@@ -36,9 +36,12 @@ struct HabitsScreen: View {
                 if !row.target.isEmpty {
                     Text(row.target).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
+                if !row.rhythm.isEmpty {
+                    Tag(text: row.rhythm, tint: UI.violet, strong: true)
+                }
                 Spacer()
                 if row.streak > 0 { Tag(text: "\(row.streak) day streak", tint: UI.amber, strong: true) }
-                Tag(text: "\(row.done) of \(grid.days)", tint: UI.mint)
+                Tag(text: "\(row.done) of \(row.owed > 0 ? row.owed : grid.days)", tint: UI.mint)
             }
 
             #if os(macOS)
@@ -61,11 +64,12 @@ struct HabitsScreen: View {
         ForEach(0..<max(0, grid.days), id: \.self) { index in
             let on = index < row.marks.count && row.marks[index]
             let isToday = index + 1 == grid.today
+            let due = row.isDue(index)
             Button {
                 Task { await store.setHabit(row.name, !on, on: key(grid, index + 1)) }
             } label: {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(on ? UI.mint : Color.primary.opacity(0.06))
+                    .fill(on ? UI.mint : Color.primary.opacity(due ? 0.06 : 0.015))
                     .frame(width: dot, height: dot)
                     .overlay {
                         if isToday {
@@ -76,8 +80,9 @@ struct HabitsScreen: View {
                     .overlay {
                         Text("\(index + 1)")
                             .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(on ? .white : .secondary)
+                            .foregroundStyle(on ? Color.white : Color.secondary.opacity(due ? 1 : 0.6))
                     }
+                    .opacity(due ? 1 : 0.45)      /* not its day */
             }
             .buttonStyle(.plain)
         }

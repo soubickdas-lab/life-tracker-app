@@ -59,6 +59,12 @@ struct TrackerAPI: Sendable {
         }
     }
 
+    /// Every day, every other day, every third day…
+    func setHabitEvery(_ name: String, _ every: Int) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "habitfreq", "name": name, "every": String(every)])
+        return (r.0, r.2)
+    }
+
     /// The day, in the order the screen now shows it.
     func setOrder(_ ids: [String]) async throws -> (TrackerState, String) {
         try await sendWithReply(["api": "order", "ids": ids.joined(separator: ","), "light": "1"])

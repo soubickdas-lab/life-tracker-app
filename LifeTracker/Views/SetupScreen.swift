@@ -186,6 +186,18 @@ struct SetupScreen: View {
                         Text(habit.name)
                             .foregroundStyle(habit.active ? .primary : .secondary)
                         Spacer()
+                        Menu {
+                            ForEach([1, 2, 3, 4, 7], id: \.self) { n in
+                                Button(Self.rhythm(n)) {
+                                    Task { await store.setHabitEvery(habit.name, n) }
+                                }
+                            }
+                        } label: {
+                            Tag(text: Self.rhythm(habit.every),
+                                tint: habit.every > 1 ? UI.violet : .secondary,
+                                strong: habit.every > 1)
+                        }
+                        .barelyAMenu()
                         TextField("target", text: Binding(
                             get: { drafts["h\(habit.slot)"] ?? habit.target },
                             set: { drafts["h\(habit.slot)"] = $0 }))
@@ -209,6 +221,16 @@ struct SetupScreen: View {
                     .padding(.vertical, 3)
                 }
             }
+        }
+    }
+
+    static func rhythm(_ n: Int) -> String {
+        switch n {
+        case 1:  return "every day"
+        case 2:  return "every 2nd day"
+        case 3:  return "every 3rd day"
+        case 7:  return "weekly"
+        default: return "every \(n) days"
         }
     }
 

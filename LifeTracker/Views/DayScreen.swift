@@ -28,7 +28,7 @@ struct DayScreen: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { putEditorsAway() }           /* a click on empty space closes the box */
+        .onTapGesture { putEditorsAway() }           /* a click on empty space only closes the box */
         .onChange(of: focus) { was, now in
             guard was != nil, now == nil else { return }
             putEditorsAway()                          /* tabbed or clicked away */
