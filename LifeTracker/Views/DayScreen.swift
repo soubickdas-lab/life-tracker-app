@@ -12,6 +12,7 @@ struct DayScreen: View {
     @State private var clockEdit: String?
     @State private var clockDraft = ""
     @FocusState private var focus: String?
+    @State private var kg = ""
 
     private var day: DayBlock? { store.state.days.first { $0.label == label } }
 
@@ -20,7 +21,7 @@ struct DayScreen: View {
             if let day {
                 header(day)
                 tasks(day)
-                if label == "Today" { habits; streak }
+                if label == "Today" { habits; weight; streak }
             } else {
                 Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your sheet…") }
             }
@@ -230,12 +231,7 @@ struct DayScreen: View {
                 .font(.system(size: 14))
                 .onSubmit { add(day) }
 
-            TextField("7-8 pm", text: $newSlot)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .multilineTextAlignment(.trailing)
-                .frame(width: 84)
-                .onSubmit { add(day) }
+            SlotPicker(slot: $newSlot, dayIsToday: day.label == "Today")
 
             Button { add(day) } label: {
                 Image(systemName: "return")
@@ -294,6 +290,43 @@ struct DayScreen: View {
                 }
             }
         }
+    }
+
+    /// Today's weight, in the same place you tick everything else off.
+    private var weight: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Weight").font(.system(size: 15, weight: .semibold))
+                    Spacer()
+                    if !store.state.weight.isEmpty {
+                        Tag(text: "last \(store.state.weight) kg", tint: UI.violet, strong: true)
+                    }
+                }
+                HStack(spacing: 10) {
+                    TextField("72.5", text: $kg)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13))
+                        .frame(width: 110)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
+                        .onSubmit { saveWeight() }
+                    Text("kg").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Button("Save today") { saveWeight() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(Double(kg.trimmingCharacters(in: .whitespaces)) == nil)
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private func saveWeight() {
+        let clean = kg.trimmingCharacters(in: .whitespaces)
+        guard Double(clean) != nil else { return }
+        kg = ""
+        Task { await store.logWeight(clean) }
     }
 
     private var streak: some View {
