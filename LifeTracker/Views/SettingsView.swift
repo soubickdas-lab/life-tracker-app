@@ -48,6 +48,11 @@ struct SettingsView: View {
                     .foregroundStyle(result.hasPrefix("✅") ? UI.mint : .red)
             }
 
+            if store.isConfigured {
+                Button("Sign out of this device", role: .destructive) { signOut() }
+                    .padding(.top, 2)
+            }
+
             HStack {
                 if let last = store.lastSync {
                     Text("Last synced \(last.formatted(date: .omitted, time: .shortened))")
@@ -120,6 +125,18 @@ struct SettingsView: View {
         default:             result = "That clipboard had no link or key in it"
         }
         if store.isConfigured { test() }
+    }
+
+    /* Forgets the link and the key. The data stays where it is; this device
+       simply stops being signed in to it. */
+    private func signOut() {
+        store.endpoint = ""
+        store.key = ""
+        store.state = TrackerState()
+        store.extra = SheetExtra()
+        store.lastSync = nil
+        result = "Signed out"
+        dismiss()
     }
 
     private func test() {
