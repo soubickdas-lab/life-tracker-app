@@ -89,8 +89,8 @@ struct RootView: View {
             wrap(DayScreen(label: "Tomorrow"), "Tomorrow")
                 .tabItem { Label("Tomorrow", systemImage: "arrow.right.circle") }
                 .tag(1)
-            wrap(HabitsScreen(), "Habits")
-                .tabItem { Label("Habits", systemImage: "flame") }
+            wrap(GoalsScreen(), "Long Term")
+                .tabItem { Label("Long Term", systemImage: Pane.longTerm.icon) }
                 .tag(2)
             wrap(ScheduledScreen(), "Scheduled")
                 .tabItem { Label("Plan", systemImage: "calendar") }
@@ -157,8 +157,8 @@ struct RootView: View {
             List {
                 Section("Days") { pageLink(.yesterday) }
                 Section("Tracking") {
+                    pageLink(.habits)
                     pageLink(.dash)
-                    pageLink(.longTerm)
                     pageLink(.body)
                     pageLink(.notes)
                 }

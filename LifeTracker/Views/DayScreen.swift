@@ -66,41 +66,82 @@ struct DayScreen: View {
 
     // MARK: - Task list
 
-    private func tasks(_ day: DayBlock) -> some View {
+    @ViewBuilder private func tasks(_ day: DayBlock) -> some View {
+        let open = day.tasks.filter { !$0.done }
+        let done = day.tasks.filter(\.done)
+
         Panel(padding: 0) {
             VStack(spacing: 0) {
-                if day.tasks.isEmpty {
-                    EmptyHint(icon: "checklist", text: "Nothing on this day yet.\nAdd the first thing below.")
+                heading("Upcoming", count: open.count, tint: UI.accent)
+                if open.isEmpty {
+                    EmptyHint(icon: day.tasks.isEmpty ? "checklist" : "checkmark.seal",
+                              text: day.tasks.isEmpty ? "Nothing on this day yet.\nAdd the first thing below."
+                                                      : "All clear — everything here is done.")
                 } else {
-                    ForEach(Array(day.tasks.enumerated()), id: \.element.id) { index, task in
-                        row(task)
-                            .draggable(task.id) {
-                                Text(task.task)                 /* what you see under the cursor */
-                                    .font(.system(size: 13, weight: .medium))
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .background(UI.accent, in: Capsule())
-                                    .foregroundStyle(.white)
-                            }
-                            .dropDestination(for: String.self) { dropped, _ in
-                                guard let moved = dropped.first else { return false }
-                                Task { await store.reorder(moved, before: task.id, on: label) }
-                                return true
-                            } isTargeted: { over in
-                                dropTarget = over ? task.id : (dropTarget == task.id ? nil : dropTarget)
-                            }
-                            .overlay(alignment: .top) {
-                                if dropTarget == task.id {
-                                    Rectangle().fill(UI.accent).frame(height: 2)
-                                }
-                            }
-                        if index < day.tasks.count - 1 { RowLine(leading: 52) }
-                    }
+                    list(open)
                 }
                 RowLine()
                 addRow(day)
             }
         }
+
+        if !done.isEmpty {
+            Panel(padding: 0) {
+                VStack(spacing: 0) {
+                    heading("Done", count: done.count, tint: UI.mint)
+                    list(done)
+                }
+            }
+        }
+    }
+
+    /// The header on each of the two lists.
+    private func heading(_ title: String, count: Int, tint: Color) -> some View {
+        HStack {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.7)
+                .foregroundStyle(.secondary)
+            Spacer()
+            if count > 0 { Tag(text: "\(count)", tint: tint, strong: true) }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 13)
+        .padding(.bottom, 9)
+    }
+
+    private func list(_ tasks: [TaskItem]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                oldRowBody(task)
+                if index < tasks.count - 1 { RowLine(leading: 52) }
+            }
+        }
+    }
+
+    /// One row, ready to be picked up and dropped somewhere else.
+    private func oldRowBody(_ task: TaskItem) -> some View {
+        row(task)
+            .draggable(task.id) {
+                Text(task.task)                     /* what you see under the cursor */
+                    .font(.system(size: 13, weight: .medium))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(UI.accent, in: Capsule())
+                    .foregroundStyle(.white)
+            }
+            .dropDestination(for: String.self) { dropped, _ in
+                guard let moved = dropped.first else { return false }
+                Task { await store.reorder(moved, before: task.id, on: label) }
+                return true
+            } isTargeted: { over in
+                dropTarget = over ? task.id : (dropTarget == task.id ? nil : dropTarget)
+            }
+            .overlay(alignment: .top) {
+                if dropTarget == task.id {
+                    Rectangle().fill(UI.accent).frame(height: 2)
+                }
+            }
     }
 
     private func row(_ task: TaskItem) -> some View {
@@ -249,11 +290,11 @@ struct DayScreen: View {
         }
     }
 
+    /// Strictly not a tick target: the circle is the only thing that ticks.
+    /// This layer exists only to put away a box that was left open.
     private func tickLayer(_ task: TaskItem, busy: Bool) -> some View {
         Button {
-            if editing != nil || clockEdit != nil { putEditorsAway(); return }
-            guard !task.pending, !busy else { return }
-            Task { await store.toggle(task) }
+            if editing != nil || clockEdit != nil { putEditorsAway() }
         } label: {
             Rectangle()
                 .fill(Color.primary.opacity(0.0001))
