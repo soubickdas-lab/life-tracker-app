@@ -14,6 +14,7 @@ struct DayScreen: View {
     @FocusState private var focus: String?
     @State private var kg = ""
     @State private var dropTarget: String?
+    @State private var lingering: Set<String> = []     /* just ticked — still shown up top */
 
     private var day: DayBlock? { store.state.days.first { $0.label == label } }
 
@@ -67,8 +68,8 @@ struct DayScreen: View {
     // MARK: - Task list
 
     @ViewBuilder private func tasks(_ day: DayBlock) -> some View {
-        let open = day.tasks.filter { !$0.done }
-        let done = day.tasks.filter(\.done)
+        let open = day.tasks.filter { !$0.done || lingering.contains($0.id) }
+        let done = day.tasks.filter { $0.done && !lingering.contains($0.id) }
 
         Panel(padding: 0) {
             VStack(spacing: 0) {
@@ -149,10 +150,7 @@ struct DayScreen: View {
         let timing = clockEdit == task.id
 
         return HStack(spacing: 11) {
-            TickCircle(on: task.done) {
-                guard !task.pending else { return }
-                Task { await store.toggle(task) }
-            }
+            TickCircle(on: task.done) { tick(task) }
 
             if naming {
                 TextField("Task", text: $draft)
@@ -197,7 +195,7 @@ struct DayScreen: View {
             #endif
 
             Menu {
-                Button(task.done ? "Mark as not done" : "Mark as done") { Task { await store.toggle(task) } }
+                Button(task.done ? "Mark as not done" : "Mark as done") { tick(task) }
                 Button("Rename…") { draft = task.task; editing = task.id }
                 Button("Change time…") { clockDraft = task.slot; clockEdit = task.id }
                 Button(task.slot.isEmpty ? "Keep all day" : "Clear the time") {
@@ -293,14 +291,12 @@ struct DayScreen: View {
     /// Strictly not a tick target: the circle is the only thing that ticks.
     /// This layer exists only to put away a box that was left open.
     private func tickLayer(_ task: TaskItem, busy: Bool) -> some View {
-        Button {
-            if editing != nil || clockEdit != nil { putEditorsAway() }
-        } label: {
-            Rectangle()
-                .fill(Color.primary.opacity(0.0001))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        Rectangle()
+            .fill(Color.primary.opacity(0.0001))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if editing != nil || clockEdit != nil { putEditorsAway() }
+            }
     }
 
     private func addRow(_ day: DayBlock) -> some View {
@@ -342,12 +338,9 @@ struct DayScreen: View {
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 9)], spacing: 9) {
                     ForEach(store.state.habits) { habit in
-                        Button {
-                            Task { await store.toggle(habit) }
-                        } label: {
+                        Group {
                             HStack(spacing: 9) {
                                 TickCircle(on: habit.done, tint: UI.amber) { Task { await store.toggle(habit) } }
-                                    .allowsHitTesting(false)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(habit.name)
                                         .font(.system(size: 13))
@@ -369,7 +362,6 @@ struct DayScreen: View {
                             .background(habit.done ? UI.amber.opacity(0.12) : Color.primary.opacity(0.04),
                                         in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -443,6 +435,23 @@ struct DayScreen: View {
         focus = nil
         if clean.isEmpty { Task { await store.delete(task) } }
         else if clean != task.task { Task { await store.rename(task, to: clean) } }
+    }
+
+    /// Ticking holds the task where it is for a few seconds, so you can see what you
+    /// just did — and undo it — before it drops into Done. Bringing one back is instant.
+    private func tick(_ task: TaskItem) {
+        guard !task.pending else { return }
+        if task.done {
+            lingering.remove(task.id)
+        } else {
+            lingering.insert(task.id)
+            let id = task.id
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                lingering.remove(id)
+            }
+        }
+        Task { await store.toggle(task) }
     }
 
     /// Saves and shuts whichever box is open. Called when the click, or the focus, goes elsewhere.
