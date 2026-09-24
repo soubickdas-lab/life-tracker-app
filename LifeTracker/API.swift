@@ -59,6 +59,11 @@ struct TrackerAPI: Sendable {
         }
     }
 
+    /// The day, in the order the screen now shows it.
+    func setOrder(_ ids: [String]) async throws -> (TrackerState, String) {
+        try await sendWithReply(["api": "order", "ids": ids.joined(separator: ","), "light": "1"])
+    }
+
     func setHabit(_ name: String, _ done: Bool, on day: String = "") async throws -> (TrackerState, SheetExtra?) {
         var params = ["api": "habit", "name": name, "done": done ? "true" : "false", "light": "1"]
         if !day.isEmpty { params["date"] = day }

@@ -124,6 +124,22 @@ final class Store {
         await runWithReply { try await client.setTime(task.id, slot: clean) }
     }
 
+    /// Dragged into a new place: the list moves first, then the sheet is told.
+    func reorder(_ movedId: String, before targetId: String, on label: String) async {
+        guard movedId != targetId,
+              let day = state.days.firstIndex(where: { $0.label == label }) else { return }
+        var list = state.days[day].tasks
+        guard let from = list.firstIndex(where: { $0.id == movedId }),
+              let to = list.firstIndex(where: { $0.id == targetId }) else { return }
+        let moving = list.remove(at: from)
+        list.insert(moving, at: to)
+        state.days[day].tasks = list
+
+        let ids = list.map(\.id).filter { !$0.hasPrefix("pending-") }
+        let client = api
+        await runWithReply { try await client.setOrder(ids) }
+    }
+
     func move(_ task: TaskItem, to when: String) async {
         let client = api
         await runWithReply { try await client.move(task.id, to: when) }

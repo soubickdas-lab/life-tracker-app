@@ -13,6 +13,7 @@ struct DayScreen: View {
     @State private var clockDraft = ""
     @FocusState private var focus: String?
     @State private var kg = ""
+    @State private var dropTarget: String?
 
     private var day: DayBlock? { store.state.days.first { $0.label == label } }
 
@@ -73,6 +74,26 @@ struct DayScreen: View {
                 } else {
                     ForEach(Array(day.tasks.enumerated()), id: \.element.id) { index, task in
                         row(task)
+                            .draggable(task.id) {
+                                Text(task.task)                 /* what you see under the cursor */
+                                    .font(.system(size: 13, weight: .medium))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(UI.accent, in: Capsule())
+                                    .foregroundStyle(.white)
+                            }
+                            .dropDestination(for: String.self) { dropped, _ in
+                                guard let moved = dropped.first else { return false }
+                                Task { await store.reorder(moved, before: task.id, on: label) }
+                                return true
+                            } isTargeted: { over in
+                                dropTarget = over ? task.id : (dropTarget == task.id ? nil : dropTarget)
+                            }
+                            .overlay(alignment: .top) {
+                                if dropTarget == task.id {
+                                    Rectangle().fill(UI.accent).frame(height: 2)
+                                }
+                            }
                         if index < day.tasks.count - 1 { RowLine(leading: 52) }
                     }
                 }
