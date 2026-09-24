@@ -1,0 +1,5 @@
+# built products — only the shipping IPA is committed, under dist/
+build/
+*.xcuserdata
+xcuserdata/
+.DS_Store
