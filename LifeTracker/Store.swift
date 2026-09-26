@@ -36,6 +36,33 @@ final class Store {
     /// without anyone pressing anything.
     private var poller: Task<Void, Never>?
 
+    /// A tick is on screen before the server hears about it, so there is nothing to
+    /// wait for. "Updating…" only appears if a call is slow enough to be worth saying.
+    private var working = 0
+    private var reveal: Task<Void, Never>?
+
+    /// Every change gets a number. A reply only replaces what is on screen when it
+    /// is the newest one — otherwise a slow answer would undo a faster tap.
+    private var issued = 0
+
+    private func beginWork(quiet: Bool) {
+        working += 1
+        guard !quiet, reveal == nil else { return }
+        reveal = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled, let self, self.working > 0 else { return }
+            self.busy = true
+        }
+    }
+
+    private func endWork() {
+        working = max(0, working - 1)
+        guard working == 0 else { return }
+        reveal?.cancel()
+        reveal = nil
+        busy = false
+    }
+
     init() {
         token = UserDefaults.standard.string(forKey: "token") ?? ""
     }
@@ -104,7 +131,8 @@ final class Store {
         poller?.cancel()
         poller = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 120 * 1_000_000_000)   /* two minutes */
+                /* often enough that a tick on the phone shows up here while you look */
+                try? await Task.sleep(for: .seconds(25))
                 guard !Task.isCancelled, let self, self.isConfigured, !self.busy, !self.loading else { continue }
                 await self.refresh(quietly: true)
             }
@@ -133,6 +161,7 @@ final class Store {
 
     func refresh(quietly: Bool = false) async {
         guard isConfigured else { return }
+        if quietly, working > 0 { return }        /* something is mid-flight — its reply is newer */
         if !quietly { loading = true }
         defer { loading = false }
         let client = api
@@ -257,14 +286,21 @@ final class Store {
 
     /// Ticking from the journey screen is the same tick as anywhere else.
     func toggle(journeyHabit name: String, on: Bool) async {
-        if let at = state.habits.firstIndex(where: { $0.name == name }) { state.habits[at].done = on }
-        for j in state.journeys.indices {
-            if let at = state.journeys[j].habits.firstIndex(where: { $0.name == name }) {
-                state.journeys[j].habits[at].done = on
-            }
-        }
+        tickLocally(name, on)
         let client = api
         await runFull(note: nil) { try await client.setHabit(name, on) }
+    }
+
+    /// The habit grid, the Today chips and the journey all show the same tick, so
+    /// they all move at once — the server only confirms it afterwards.
+    private func tickLocally(_ name: String, _ on: Bool) {
+        if let at = state.habits.firstIndex(where: { $0.name == name }) { state.habits[at].done = on }
+        for j in state.journeys.indices {
+            guard let at = state.journeys[j].habits.firstIndex(where: { $0.name == name }) else { continue }
+            state.journeys[j].habits[at].done = on
+            state.journeys[j].doneToday = state.journeys[j].habits
+                .filter { $0.due && $0.ticked }.count
+        }
     }
 
     func move(_ task: TaskItem, to when: String) async {
@@ -302,9 +338,9 @@ final class Store {
     }
 
     func toggle(_ habit: Habit) async {
-        guard let i = state.habits.firstIndex(where: { $0.name == habit.name }) else { return }
+        guard state.habits.contains(where: { $0.name == habit.name }) else { return }
         let wanted = !habit.done
-        state.habits[i].done = wanted
+        tickLocally(habit.name, wanted)
         let client = api
         await runFull(note: nil) { try await client.setHabit(habit.name, wanted) }
     }
@@ -463,11 +499,14 @@ final class Store {
 
     private func runFull(note: String?, quiet: Bool = false,
                          _ work: @escaping () async throws -> (TrackerState, SheetExtra?)) async {
-        if !quiet { busy = true }
-        defer { if !quiet { busy = false } }
+        issued += 1
+        let mine = issued
+        beginWork(quiet: quiet)
+        defer { endWork() }
         do {
             let (fresh, more) = try await work()
-            state = fresh
+            /* a tap that came after this one is already on screen — leave it there */
+            if mine == issued { state = fresh }
             if let more { extra = more }        /* a light reply leaves the other tabs alone */
             lastSync = Date()
             errorText = nil
@@ -483,10 +522,13 @@ final class Store {
     }
 
     private func run(note: String? = nil, _ work: @escaping () async throws -> TrackerState) async {
-        busy = true
-        defer { busy = false }
+        issued += 1
+        let mine = issued
+        beginWork(quiet: false)
+        defer { endWork() }
         do {
-            state = try await work()
+            let fresh = try await work()
+            if mine == issued { state = fresh }
             lastSync = Date()
             errorText = nil
             replanAlerts()
@@ -497,11 +539,13 @@ final class Store {
     }
 
     private func runWithReply(_ work: @escaping () async throws -> (TrackerState, String)) async {
-        busy = true
-        defer { busy = false }
+        issued += 1
+        let mine = issued
+        beginWork(quiet: false)
+        defer { endWork() }
         do {
             let (fresh, said) = try await work()
-            state = fresh
+            if mine == issued { state = fresh }
             lastSync = Date()
             errorText = nil
             replanAlerts()
