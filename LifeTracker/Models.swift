@@ -153,6 +153,7 @@ struct JourneyHabit: Codable, Identifiable, Sendable, Equatable {
     var every: Int
     var needsPhoto: Bool = false
     var hasPhoto: Bool = false
+    var days: [String] = []
 
     var id: String { name }
 
@@ -167,6 +168,7 @@ struct JourneyHabit: Codable, Identifiable, Sendable, Equatable {
         every = (try? c.decode(Int.self, forKey: .every)) ?? 1
         needsPhoto = (try? c.decode(Bool.self, forKey: .needsPhoto)) ?? false
         hasPhoto = (try? c.decode(Bool.self, forKey: .hasPhoto)) ?? false
+        days = (try? c.decode([String].self, forKey: .days)) ?? []
     }
 }
 

@@ -139,7 +139,8 @@ struct TrackerAPI: Sendable {
     // MARK: - Proof photos
 
     /// Sends the picture. The habit ticks because the picture landed, not the other way round.
-    func sendPhoto(_ bytes: Data, journey: Int, habit: String, day: String? = nil) async throws -> (TrackerState, SheetExtra?) {
+    func sendPhoto(_ bytes: Data, journey: Int, habit: String, day: String? = nil,
+                   thumb: Bool = false) async throws -> (TrackerState, SheetExtra?) {
         guard isConfigured else { throw Failure.notConfigured }
         guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
         parts.queryItems = [
@@ -147,6 +148,7 @@ struct TrackerAPI: Sendable {
             URLQueryItem(name: "journey", value: String(journey)),
             URLQueryItem(name: "habit", value: habit),
         ] + (day.map { [URLQueryItem(name: "day", value: $0)] } ?? [])
+            + (thumb ? [URLQueryItem(name: "thumb", value: "1")] : [])
         guard let url = parts.url else { throw Failure.badURL }
 
         var request = URLRequest(url: url)
@@ -159,14 +161,13 @@ struct TrackerAPI: Sendable {
         let data = try await URLSession.shared.data(for: request).0
         let reply = try JSONDecoder().decode(APIReply.self, from: data)
         if reply.pending == true { throw Failure.waiting }
-        guard reply.ok, let state = reply.state else {
-            throw Failure.server(reply.error ?? "That photo did not go through.")
-        }
+        guard reply.ok else { throw Failure.server(reply.error ?? "That photo did not go through.") }
+        guard let state = reply.state else { return (TrackerState(), nil) }   /* a thumbnail sends none back */
         return (state, reply.extra)
     }
 
     /// The picture itself, for looking at.
-    func photo(journey: Int, habit: String, day: String? = nil) async throws -> Data {
+    func photo(journey: Int, habit: String, day: String? = nil, thumb: Bool = false) async throws -> Data {
         guard isConfigured else { throw Failure.notConfigured }
         guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
         parts.queryItems = [
@@ -174,6 +175,7 @@ struct TrackerAPI: Sendable {
             URLQueryItem(name: "journey", value: String(journey)),
             URLQueryItem(name: "habit", value: habit),
         ] + (day.map { [URLQueryItem(name: "day", value: $0)] } ?? [])
+            + (thumb ? [URLQueryItem(name: "thumb", value: "1")] : [])
         guard let url = parts.url else { throw Failure.badURL }
 
         var request = URLRequest(url: url)

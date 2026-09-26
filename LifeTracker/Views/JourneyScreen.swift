@@ -188,11 +188,15 @@ struct JourneyScreen: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    Text(journey.photos > 0
-                         ? "Keep them until the journey is done, take the zip, then start clean."
-                         : "The habits marked with a camera tick when their photo is in.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if journey.photos > 0 {
+                        ForEach(journey.habits.filter(\.needsPhoto)) { habit in
+                            PhotoStrip(journey: journey, habit: habit)
+                        }
+                    } else {
+                        Text("The habits marked with a camera tick when their photo is in.")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     HStack(spacing: 10) {
                         Button { save(journey) } label: {

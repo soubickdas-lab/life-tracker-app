@@ -223,18 +223,24 @@ final class Store {
     // MARK: - Proof photos
 
     func sendPhoto(_ bytes: Data, journey: Int, habit: String) async {
+        PhotoStore.shared.forget(journey: journey, habit: habit)
         let client = api
         await runFull(note: nil) { try await client.sendPhoto(bytes, journey: journey, habit: habit) }
+        if let small = Photo.shrink(bytes, longSide: 320) {
+            _ = try? await client.sendPhoto(small, journey: journey, habit: habit, thumb: true)
+        }
     }
 
-    func photo(journey: Int, habit: String) async -> Data? {
-        do { return try await api.photo(journey: journey, habit: habit) }
-        catch { errorText = error.localizedDescription; return nil }
-    }
-
-    func dropPhoto(journey: Int, habit: String) async {
+    func dropPhoto(journey: Int, habit: String, day: String? = nil) async {
+        PhotoStore.shared.forget(journey: journey, habit: habit)
         let client = api
-        await runFull(note: "🗑 Photo removed") { try await client.dropPhoto(journey: journey, habit: habit) }
+        await runFull(note: "🗑 Photo removed") {
+            try await client.dropPhoto(journey: journey, habit: habit, day: day)
+        }
+    }
+
+    func photo(journey: Int, habit: String, day: String? = nil, thumb: Bool = false) async -> Data? {
+        try? await api.photo(journey: journey, habit: habit, day: day, thumb: thumb)
     }
 
     func clearPhotos(journey: Int) async {
