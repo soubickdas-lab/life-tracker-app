@@ -26,7 +26,7 @@ struct DayScreen: View {
                     ForEach(store.state.journeys) { JourneyStrip(journey: $0) }
                 }
                 tasks(day)
-                if label == "Today" { habits; weight; streak }
+                if label == "Today" { habits; weight }
             } else {
                 Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your sheet…") }
             }
@@ -406,28 +406,6 @@ struct DayScreen: View {
         guard Double(clean) != nil else { return }
         kg = ""
         Task { await store.logWeight(clean) }
-    }
-
-    private var streak: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Last 14 days").font(.system(size: 15, weight: .semibold))
-                HStack(alignment: .bottom, spacing: 6) {
-                    ForEach(store.extra.history) { day in
-                        VStack(spacing: 5) {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(day.share >= 1 ? UI.mint : UI.accent.opacity(0.65))
-                                .frame(height: max(4, 52 * day.share))
-                            Text(day.date.prefix(2))
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .bottom)
-                    }
-                }
-                .frame(height: 70, alignment: .bottom)
-            }
-        }
     }
 
     // MARK: - Actions

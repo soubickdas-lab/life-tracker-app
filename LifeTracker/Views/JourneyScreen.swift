@@ -119,6 +119,11 @@ struct JourneyScreen: View {
                      ? "Log today's weight and this fills in."
                      : "\(journey.movedPct ?? 0)% of the way there")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
+
+                WeightLine(readings: journey.weights,
+                           from: Double(journey.from),
+                           to: Double(journey.to))
+                    .padding(.top, 6)
             }
         }
     }
@@ -439,5 +444,122 @@ struct JourneyStrip: View {
                 Spacer(minLength: 0)
             }
         }
+    }
+}
+
+/// The weight, day by day, with the target drawn across it. A line, not bars —
+/// what matters here is the slope, and whether it points at the mark.
+struct WeightLine: View {
+    var readings: [WeighIn]
+    var from: Double?
+    var to: Double?
+
+    private var points: [(day: String, kg: Double)] {
+        readings.compactMap { r in r.value.map { (r.day, $0) } }
+    }
+
+    /// The window the line is drawn in — wide enough to hold the target too.
+    private var span: (low: Double, high: Double) {
+        var all = points.map(\.kg)
+        if let from { all.append(from) }
+        if let to { all.append(to) }
+        guard let low = all.min(), let high = all.max() else { return (0, 1) }
+        let pad = max(0.4, (high - low) * 0.12)
+        return (low - pad, high + pad)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if points.count < 2 {
+                Text(points.isEmpty
+                     ? "Log your weight on Today and the line starts here."
+                     : "One reading so far — log tomorrow's and the line begins.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .frame(height: 60, alignment: .center)
+            } else {
+                chart
+                HStack {
+                    Text(short(points.first?.day ?? ""))
+                    Spacer()
+                    if let latest = points.last {
+                        Text("\(trim(latest.kg)) kg")
+                            .foregroundStyle(UI.violet)
+                            .fontWeight(.semibold)
+                    }
+                    Spacer()
+                    Text(short(points.last?.day ?? ""))
+                }
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var chart: some View {
+        GeometryReader { space in
+            let width = space.size.width
+            let height = space.size.height
+            let window = span
+            let reach = max(0.001, window.high - window.low)
+            let at = { (kg: Double) in height - CGFloat((kg - window.low) / reach) * height }
+            let step = points.count > 1 ? width / CGFloat(points.count - 1) : width
+
+            ZStack {
+                /* the mark being aimed at */
+                if let to {
+                    let y = at(to)
+                    Path { line in
+                        line.move(to: CGPoint(x: 0, y: y))
+                        line.addLine(to: CGPoint(x: width, y: y))
+                    }
+                    .stroke(UI.mint.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    Text("target \(trim(to))")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(UI.mint)
+                        .position(x: 36, y: max(7, y - 8))
+                }
+
+                /* the run of readings, and the ground under it */
+                let path = Path { line in
+                    for (index, point) in points.enumerated() {
+                        let spot = CGPoint(x: CGFloat(index) * step, y: at(point.kg))
+                        if index == 0 { line.move(to: spot) } else { line.addLine(to: spot) }
+                    }
+                }
+                path.strokedPath(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .fill(UI.violet)
+
+                Path { shape in
+                    shape.addPath(path)
+                    shape.addLine(to: CGPoint(x: CGFloat(points.count - 1) * step, y: height))
+                    shape.addLine(to: CGPoint(x: 0, y: height))
+                    shape.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [UI.violet.opacity(0.22), UI.violet.opacity(0.02)],
+                                     startPoint: .top, endPoint: .bottom))
+
+                /* today's reading, marked */
+                if let last = points.last {
+                    Circle()
+                        .fill(UI.violet)
+                        .frame(width: 7, height: 7)
+                        .position(x: CGFloat(points.count - 1) * step, y: at(last.kg))
+                }
+            }
+        }
+        .frame(height: 110)
+    }
+
+    private func trim(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    private func short(_ day: String) -> String {
+        let take = DateFormatter()
+        take.dateFormat = "yyyy-MM-dd"
+        guard let date = take.date(from: day) else { return day }
+        let show = DateFormatter()
+        show.dateFormat = "d MMM"
+        return show.string(from: date)
     }
 }

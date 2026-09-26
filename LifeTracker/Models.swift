@@ -97,11 +97,53 @@ struct Journey: Codable, Identifiable, Sendable, Equatable {
     var perfectRun: Int
     var movedPct: Int?
     var photos: Int = 0
+    var weights: [WeighIn] = []
 
     var countdown: String {
         "Day \(dayNumber) of \(daysTotal) · \(daysLeft) \(daysLeft == 1 ? "day" : "days") to go"
     }
     var hasTarget: Bool { !from.isEmpty && !to.isEmpty }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(Int.self, forKey: .id)) ?? 0
+        name = (try? c.decode(String.self, forKey: .name)) ?? "Journey"
+        kind = (try? c.decode(String.self, forKey: .kind)) ?? "general"
+        starts = (try? c.decode(String.self, forKey: .starts)) ?? ""
+        ends = (try? c.decode(String.self, forKey: .ends)) ?? ""
+        unit = (try? c.decode(String.self, forKey: .unit)) ?? ""
+        from = (try? c.decode(String.self, forKey: .from)) ?? ""
+        to = (try? c.decode(String.self, forKey: .to)) ?? ""
+        now = (try? c.decode(String.self, forKey: .now)) ?? ""
+        dayNumber = (try? c.decode(Int.self, forKey: .dayNumber)) ?? 1
+        daysTotal = (try? c.decode(Int.self, forKey: .daysTotal)) ?? 1
+        daysLeft = (try? c.decode(Int.self, forKey: .daysLeft)) ?? 0
+        timePct = (try? c.decode(Int.self, forKey: .timePct)) ?? 0
+        habits = (try? c.decode([JourneyHabit].self, forKey: .habits)) ?? []
+        doneToday = (try? c.decode(Int.self, forKey: .doneToday)) ?? 0
+        dueToday = (try? c.decode(Int.self, forKey: .dueToday)) ?? 0
+        keptPct = (try? c.decode(Int.self, forKey: .keptPct)) ?? 0
+        perfectDays = (try? c.decode(Int.self, forKey: .perfectDays)) ?? 0
+        perfectRun = (try? c.decode(Int.self, forKey: .perfectRun)) ?? 0
+        movedPct = try? c.decode(Int.self, forKey: .movedPct)
+        photos = (try? c.decode(Int.self, forKey: .photos)) ?? 0
+        weights = (try? c.decode([WeighIn].self, forKey: .weights)) ?? []
+    }
+}
+
+/// One reading on the way, for the line on the journey screen.
+struct WeighIn: Codable, Identifiable, Sendable, Equatable {
+    var day: String
+    var kg: String
+
+    var id: String { day }
+    var value: Double? { Double(kg) }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        day = (try? c.decode(String.self, forKey: .day)) ?? ""
+        kg = (try? c.decode(String.self, forKey: .kg)) ?? ""
+    }
 }
 
 struct JourneyHabit: Codable, Identifiable, Sendable, Equatable {
@@ -116,6 +158,16 @@ struct JourneyHabit: Codable, Identifiable, Sendable, Equatable {
 
     /// A photo habit is ticked by the photo, not by the circle.
     var ticked: Bool { needsPhoto ? hasPhoto : done }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        due = (try? c.decode(Bool.self, forKey: .due)) ?? true
+        done = (try? c.decode(Bool.self, forKey: .done)) ?? false
+        every = (try? c.decode(Int.self, forKey: .every)) ?? 1
+        needsPhoto = (try? c.decode(Bool.self, forKey: .needsPhoto)) ?? false
+        hasPhoto = (try? c.decode(Bool.self, forKey: .hasPhoto)) ?? false
+    }
 }
 
 struct Note: Codable, Identifiable, Sendable {
