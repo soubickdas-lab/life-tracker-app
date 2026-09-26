@@ -74,6 +74,9 @@ cat > "$OUT/Info.plist" <<PLIST
 		<key>CFBundleURLName</key><string>com.soubick.lifetracker</string>
 		<key>CFBundleURLSchemes</key><array><string>lifetracker</string></array>
 	</dict></array>
+	<key>NSCameraUsageDescription</key><string>So you can photograph the day's proof — the step count, the morning picture — straight into your journey.</string>
+	<key>NSPhotoLibraryUsageDescription</key><string>So you can pick a screenshot or a photo you already took as the day's proof.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key><string>So the photos you save from a journey land in your library.</string>
 	<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>

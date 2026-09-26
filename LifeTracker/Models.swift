@@ -6,6 +6,7 @@ struct TrackerState: Codable, Sendable {
     var days: [DayBlock] = []
     var habits: [Habit] = []
     var weight: String = ""
+    var journeys: [Journey] = []
     var notes: [Note] = []
 
     var todayBlock: DayBlock? { days.first { $0.label == "Today" } }
@@ -18,6 +19,7 @@ struct TrackerState: Codable, Sendable {
         days = (try? c.decode([DayBlock].self, forKey: .days)) ?? []
         habits = (try? c.decode([Habit].self, forKey: .habits)) ?? []
         weight = (try? c.decode(String.self, forKey: .weight)) ?? ""
+        journeys = (try? c.decode([Journey].self, forKey: .journeys)) ?? []
         notes = (try? c.decode([Note].self, forKey: .notes)) ?? []
     }
 }
@@ -70,6 +72,50 @@ struct Habit: Codable, Identifiable, Sendable, Equatable {
 
     var id: String { name }
     var rhythm: String { every <= 1 ? "" : "every \(every) days" }
+}
+
+/// Something you are working towards by a date, and the habits that get you there.
+struct Journey: Codable, Identifiable, Sendable, Equatable {
+    var id: Int
+    var name: String
+    var kind: String
+    var starts: String
+    var ends: String
+    var unit: String
+    var from: String
+    var to: String
+    var now: String
+    var dayNumber: Int
+    var daysTotal: Int
+    var daysLeft: Int
+    var timePct: Int
+    var habits: [JourneyHabit]
+    var doneToday: Int
+    var dueToday: Int
+    var keptPct: Int
+    var perfectDays: Int
+    var perfectRun: Int
+    var movedPct: Int?
+    var photos: Int = 0
+
+    var countdown: String {
+        "Day \(dayNumber) of \(daysTotal) · \(daysLeft) \(daysLeft == 1 ? "day" : "days") to go"
+    }
+    var hasTarget: Bool { !from.isEmpty && !to.isEmpty }
+}
+
+struct JourneyHabit: Codable, Identifiable, Sendable, Equatable {
+    var name: String
+    var due: Bool
+    var done: Bool
+    var every: Int
+    var needsPhoto: Bool = false
+    var hasPhoto: Bool = false
+
+    var id: String { name }
+
+    /// A photo habit is ticked by the photo, not by the circle.
+    var ticked: Bool { needsPhoto ? hasPhoto : done }
 }
 
 struct Note: Codable, Identifiable, Sendable {

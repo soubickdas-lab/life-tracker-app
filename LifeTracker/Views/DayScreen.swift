@@ -22,6 +22,9 @@ struct DayScreen: View {
         Page {
             if let day {
                 header(day)
+                if label == "Today" {
+                    ForEach(store.state.journeys) { JourneyStrip(journey: $0) }
+                }
                 tasks(day)
                 if label == "Today" { habits; weight; streak }
             } else {

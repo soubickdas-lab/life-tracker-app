@@ -169,6 +169,18 @@ struct RootView: View {
         #endif
     }
 
+    /// The journey tab is only there once you have one, and it wears its own name.
+    private var panes: [Pane] {
+        (store.state.journeys.isEmpty && store.pane != .journey)
+            ? Pane.allCases.filter { $0 != .journey }
+            : Pane.allCases
+    }
+
+    private func title(of pane: Pane) -> String {
+        if pane == .journey, let first = store.state.journeys.first { return first.name }
+        return pane.title
+    }
+
     @ViewBuilder private var content: some View {
         #if os(iOS)
         TabView(selection: $phoneTab) {
@@ -178,9 +190,15 @@ struct RootView: View {
             wrap(DayScreen(label: "Tomorrow"), "Tomorrow")
                 .tabItem { Label("Tomorrow", systemImage: "arrow.right.circle") }
                 .tag(1)
-            wrap(GoalsScreen(), "Long Term")
-                .tabItem { Label("Long Term", systemImage: Pane.longTerm.icon) }
-                .tag(2)
+            if let journey = store.state.journeys.first {
+                wrap(JourneyScreen(), journey.name)
+                    .tabItem { Label(shortName(journey.name), systemImage: "flag.checkered") }
+                    .tag(2)
+            } else {
+                wrap(GoalsScreen(), "Long Term")
+                    .tabItem { Label("Long Term", systemImage: Pane.longTerm.icon) }
+                    .tag(2)
+            }
             wrap(ScheduledScreen(), "Scheduled")
                 .tabItem { Label("Plan", systemImage: "calendar") }
                 .tag(3)
@@ -190,16 +208,16 @@ struct RootView: View {
         }
         #else
         NavigationSplitView {
-            List(Pane.allCases, selection: Binding<Pane?>(
+            List(panes, selection: Binding<Pane?>(
                 get: { store.pane },
                 set: { store.pane = $0 ?? .today })) { item in
-                Label(item.title, systemImage: item.icon).tag(item)
+                Label(title(of: item), systemImage: item.icon).tag(item)
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             NavigationStack {
                 paneView
-                    .navigationTitle(store.pane.title)
+                    .navigationTitle(title(of: store.pane))
                     .toolbar {
                         ToolbarItem {
                             Button { Task { await store.refresh() } } label: {
@@ -220,6 +238,7 @@ struct RootView: View {
         case .today, .tomorrow, .yesterday:
             DayScreen(label: pane.dayLabel ?? "Today")
         case .habits:    HabitsScreen()
+        case .journey:   JourneyScreen()
         case .dash:      DashboardScreen()
         case .scheduled: ScheduledScreen()
         case .longTerm:  GoalsScreen()
@@ -246,6 +265,7 @@ struct RootView: View {
             List {
                 Section("Days") { pageLink(.yesterday) }
                 Section("Tracking") {
+                    if !store.state.journeys.isEmpty { pageLink(.longTerm) }
                     pageLink(.habits)
                     pageLink(.dash)
                     pageLink(.body)
@@ -259,6 +279,11 @@ struct RootView: View {
             .navigationTitle("More")
             .toolbar { settingsButton }
         }
+    }
+
+    /// A tab label has room for about twelve characters.
+    private func shortName(_ name: String) -> String {
+        name.count <= 12 ? name : String(name.prefix(11)) + "…"
     }
 
     private func pageLink(_ pane: Pane) -> some View {

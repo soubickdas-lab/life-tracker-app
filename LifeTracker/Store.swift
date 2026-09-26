@@ -9,7 +9,10 @@ final class Store {
     var state = TrackerState()
     var extra = SheetExtra()
     var selectedDay: String = "Today"
-    var pane: Pane = .today
+    /// The Mac reopens on the page you left, the way the phone already does.
+    var pane: Pane = Pane(rawValue: UserDefaults.standard.string(forKey: "macPane") ?? "") ?? .today {
+        didSet { UserDefaults.standard.set(pane.rawValue, forKey: "macPane") }
+    }
     var loading = false
     var busy = false
     var toast: String?
@@ -197,6 +200,65 @@ final class Store {
         let ids = list.map(\.id).filter { !$0.hasPrefix("pending-") }
         let client = api
         await runWithReply { try await client.setOrder(ids) }
+    }
+
+    // MARK: - Journeys
+
+    func startJourney(_ fields: [String: String]) async {
+        let client = api
+        await runFull(note: "🎯 Started") { try await client.saveJourney(fields) }
+    }
+
+    func stopJourney(_ id: Int) async {
+        state.journeys.removeAll { $0.id == id }
+        let client = api
+        await runFull(note: "🗑 Journey removed") { try await client.dropJourney(id) }
+    }
+
+    func journeyHabit(_ id: Int, habit: String, remove: Bool, photo: Bool? = nil) async {
+        let client = api
+        await runFull(note: nil) { try await client.journeyHabit(id, habit: habit, remove: remove, photo: photo) }
+    }
+
+    // MARK: - Proof photos
+
+    func sendPhoto(_ bytes: Data, journey: Int, habit: String) async {
+        let client = api
+        await runFull(note: nil) { try await client.sendPhoto(bytes, journey: journey, habit: habit) }
+    }
+
+    func photo(journey: Int, habit: String) async -> Data? {
+        do { return try await api.photo(journey: journey, habit: habit) }
+        catch { errorText = error.localizedDescription; return nil }
+    }
+
+    func dropPhoto(journey: Int, habit: String) async {
+        let client = api
+        await runFull(note: "🗑 Photo removed") { try await client.dropPhoto(journey: journey, habit: habit) }
+    }
+
+    func clearPhotos(journey: Int) async {
+        let client = api
+        await runFull(note: nil) { try await client.clearPhotos(journey: journey) }
+    }
+
+    func photoZip(journey: Int) async -> Data? {
+        busy = true
+        defer { busy = false }
+        do { return try await api.photoZip(journey: journey) }
+        catch { errorText = error.localizedDescription; return nil }
+    }
+
+    /// Ticking from the journey screen is the same tick as anywhere else.
+    func toggle(journeyHabit name: String, on: Bool) async {
+        if let at = state.habits.firstIndex(where: { $0.name == name }) { state.habits[at].done = on }
+        for j in state.journeys.indices {
+            if let at = state.journeys[j].habits.firstIndex(where: { $0.name == name }) {
+                state.journeys[j].habits[at].done = on
+            }
+        }
+        let client = api
+        await runFull(note: nil) { try await client.setHabit(name, on) }
     }
 
     func move(_ task: TaskItem, to when: String) async {

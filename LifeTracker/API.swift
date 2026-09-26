@@ -3,7 +3,10 @@ import Foundation
 /// Talks to Life Tracker's own server. The address is built in — there is nothing
 /// to paste — and who you are is carried by the token you get when you sign in.
 struct TrackerAPI: Sendable {
-    static let home = "https://lifetracker.soubickdas.workers.dev"
+    /// The backend. Overridable with the \"apiHome\" default, so a build can be
+    /// pointed at a local server while a screen is being worked on.
+    static let home = UserDefaults.standard.string(forKey: "apiHome")
+        ?? "https://lifetracker.soubickdas.workers.dev"
 
     var token: String
 
@@ -110,6 +113,109 @@ struct TrackerAPI: Sendable {
     func setHabitEvery(_ name: String, _ every: Int) async throws -> (TrackerState, SheetExtra?) {
         let r = try await raw(["api": "habitfreq", "name": name, "every": String(every)])
         return (r.0, r.2)
+    }
+
+    /// Starts or edits a journey. Give it months, or an exact end date.
+    func saveJourney(_ fields: [String: String]) async throws -> (TrackerState, SheetExtra?) {
+        var params = fields
+        params["api"] = "journey"
+        let r = try await raw(params)
+        return (r.0, r.2)
+    }
+
+    func dropJourney(_ id: Int) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "journeydel", "id": String(id)])
+        return (r.0, r.2)
+    }
+
+    func journeyHabit(_ id: Int, habit: String, remove: Bool, photo: Bool? = nil) async throws -> (TrackerState, SheetExtra?) {
+        var params = ["api": "journeyhabit", "id": String(id),
+                      "habit": habit, "remove": remove ? "true" : "false", "light": "1"]
+        if let photo { params["photo"] = photo ? "true" : "false" }
+        let r = try await raw(params)
+        return (r.0, r.2)
+    }
+
+    // MARK: - Proof photos
+
+    /// Sends the picture. The habit ticks because the picture landed, not the other way round.
+    func sendPhoto(_ bytes: Data, journey: Int, habit: String, day: String? = nil) async throws -> (TrackerState, SheetExtra?) {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
+        parts.queryItems = [
+            URLQueryItem(name: "api", value: "photo"),
+            URLQueryItem(name: "journey", value: String(journey)),
+            URLQueryItem(name: "habit", value: habit),
+        ] + (day.map { [URLQueryItem(name: "day", value: $0)] } ?? [])
+        guard let url = parts.url else { throw Failure.badURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "content-type")
+        request.httpBody = bytes
+
+        let data = try await URLSession.shared.data(for: request).0
+        let reply = try JSONDecoder().decode(APIReply.self, from: data)
+        if reply.pending == true { throw Failure.waiting }
+        guard reply.ok, let state = reply.state else {
+            throw Failure.server(reply.error ?? "That photo did not go through.")
+        }
+        return (state, reply.extra)
+    }
+
+    /// The picture itself, for looking at.
+    func photo(journey: Int, habit: String, day: String? = nil) async throws -> Data {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
+        parts.queryItems = [
+            URLQueryItem(name: "api", value: "photo"),
+            URLQueryItem(name: "journey", value: String(journey)),
+            URLQueryItem(name: "habit", value: habit),
+        ] + (day.map { [URLQueryItem(name: "day", value: $0)] } ?? [])
+        guard let url = parts.url else { throw Failure.badURL }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 60
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw Failure.server("That photo is not there.")
+        }
+        return data
+    }
+
+    func dropPhoto(journey: Int, habit: String, day: String? = nil) async throws -> (TrackerState, SheetExtra?) {
+        var params = ["api": "photodel", "journey": String(journey), "habit": habit, "light": "1"]
+        if let day { params["day"] = day }
+        let r = try await raw(params)
+        return (r.0, r.2)
+    }
+
+    func clearPhotos(journey: Int) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "photoclear", "journey": String(journey)])
+        return (r.0, r.2)
+    }
+
+    /// Every photo of one journey, zipped, ready to be put somewhere safe.
+    func photoZip(journey: Int) async throws -> Data {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
+        parts.queryItems = [
+            URLQueryItem(name: "api", value: "photozip"),
+            URLQueryItem(name: "journey", value: String(journey)),
+        ]
+        guard let url = parts.url else { throw Failure.badURL }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 180
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw Failure.server("There are no photos to take away yet.")
+        }
+        return data
     }
 
     /// The day, in the order the screen now shows it.
