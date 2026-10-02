@@ -97,10 +97,22 @@ struct Journey: Codable, Identifiable, Sendable, Equatable {
     var perfectRun: Int
     var movedPct: Int?
     var photos: Int = 0
+    var startsIn: Int = 0            /* days until it begins; 0 once it is running */
     var weights: [WeighIn] = []
 
+    /// Where you are in it — or how long until it begins.
+    var pace: String {
+        if startsIn > 0 {
+            return startsIn == 1
+                ? "starts tomorrow · \(daysTotal) days"
+                : "starts in \(startsIn) days · \(daysTotal) days"
+        }
+        return "day \(dayNumber) of \(daysTotal)"
+    }
+
     var countdown: String {
-        "Day \(dayNumber) of \(daysTotal) · \(daysLeft) \(daysLeft == 1 ? "day" : "days") to go"
+        startsIn > 0 ? pace
+            : "Day \(dayNumber) of \(daysTotal) · \(daysLeft) \(daysLeft == 1 ? "day" : "days") to go"
     }
     var hasTarget: Bool { !from.isEmpty && !to.isEmpty }
 
@@ -127,6 +139,7 @@ struct Journey: Codable, Identifiable, Sendable, Equatable {
         perfectRun = (try? c.decode(Int.self, forKey: .perfectRun)) ?? 0
         movedPct = try? c.decode(Int.self, forKey: .movedPct)
         photos = (try? c.decode(Int.self, forKey: .photos)) ?? 0
+        startsIn = (try? c.decode(Int.self, forKey: .startsIn)) ?? 0
         weights = (try? c.decode([WeighIn].self, forKey: .weights)) ?? []
     }
 }

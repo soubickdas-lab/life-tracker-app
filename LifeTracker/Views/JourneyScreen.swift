@@ -76,7 +76,7 @@ struct JourneyScreen: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     HStack(spacing: 7) {
-                        Tag(text: "day \(journey.dayNumber) of \(journey.daysTotal)", tint: UI.accent)
+                        Tag(text: journey.pace, tint: UI.accent)
                         Tag(text: "\(journey.daysLeft) left", tint: UI.violet, strong: true)
                     }
                 }
@@ -429,7 +429,7 @@ struct JourneyStrip: View {
                     HStack(spacing: 6) {
                         Text(journey.name)
                             .font(.system(size: 15, weight: .semibold))
-                        Text("· day \(journey.dayNumber) of \(journey.daysTotal)")
+                        Text("· " + journey.pace)
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
