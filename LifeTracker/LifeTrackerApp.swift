@@ -28,6 +28,16 @@ struct LifeTrackerApp: App {
             }
         }
         #endif
+
+        #if os(macOS)
+        /* Today in the menu bar: one click, tick something off, carry on. */
+        MenuBarExtra {
+            MenuBarList().environment(store)
+        } label: {
+            Label(store.menuBarCount, systemImage: "checkmark.circle")
+        }
+        .menuBarExtraStyle(.window)
+        #endif
     }
 }
 

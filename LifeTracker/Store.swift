@@ -145,6 +145,13 @@ final class Store {
         poller = nil
     }
 
+    /// What the menu bar icon says: how much of today is still waiting.
+    var menuBarCount: String {
+        guard let today = state.todayBlock else { return "" }
+        let left = today.openCount
+        return left == 0 ? "" : String(left)
+    }
+
     var day: DayBlock? {
         state.days.first { $0.label == selectedDay } ?? state.todayBlock
     }
