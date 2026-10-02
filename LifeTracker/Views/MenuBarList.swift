@@ -6,6 +6,8 @@ import AppKit
 /// off without going to the window, then carry on with whatever you were doing.
 struct MenuBarList: View {
     @Environment(Store.self) private var store
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var closePopover
     @State private var adding = ""
     @FocusState private var typing: Bool
 
@@ -58,10 +60,16 @@ struct MenuBarList: View {
             Spacer()
             if store.busy { ProgressView().controlSize(.small) }
             Button { Task { await store.refresh(quietly: true) } } label: {
-                Image(systemName: "arrow.clockwise").font(.system(size: 11))
+                Image(systemName: "arrow.clockwise").font(.system(size: 12))
             }
             .buttonStyle(.plain)
             .help("Refresh")
+
+            Button { open() } label: {
+                Image(systemName: "macwindow").font(.system(size: 12))
+            }
+            .buttonStyle(.plain)
+            .help("Open the app")
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -166,15 +174,20 @@ struct MenuBarList: View {
     }
 
     private var footer: some View {
-        HStack {
-            Button("Open Life Tracker") { open() }
-                .font(.system(size: 11))
+        HStack(spacing: 10) {
+            Button { open() } label: {
+                Label("Open Life Tracker", systemImage: "arrow.up.forward.app")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(UI.accent)
+
             Spacer()
             Button("Quit") { NSApplication.shared.terminate(nil) }
+                .buttonStyle(.plain)
                 .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
     }
@@ -196,15 +209,35 @@ struct MenuBarList: View {
         Task { await store.add(clean, slot: "", to: today) }
     }
 
-    /// Brings the real window back, whether it is hidden or just behind something.
+    /// Brings the real window back — raised if it is still around, built again if
+    /// it was closed. The menu bar keeps the app alive either way, so by the time
+    /// this is tapped there may be no window at all; asking twice costs nothing and
+    /// one of the two always works.
     private func open() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        for window in NSApplication.shared.windows where window.canBecomeMain {
-            window.makeKeyAndOrderFront(nil)
+        closePopover()
+        let app = NSApplication.shared
+        app.activate(ignoringOtherApps: true)
+
+        if let real = mainWindow {
+            real.deminiaturize(nil)
+            real.makeKeyAndOrderFront(nil)
             return
         }
-        /* nothing left to show — ask for a fresh one */
-        NSApplication.shared.sendAction(Selector(("newWindowForTab:")), to: nil, from: nil)
+
+        openWindow(id: "main")
+
+        /* nothing came back — ask the way a click on the Dock icon would */
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            guard mainWindow == nil else { return }
+            _ = app.delegate?.applicationShouldHandleReopen?(app, hasVisibleWindows: false)
+        }
+    }
+
+    /// The app's real window, as opposed to the menu bar's own panel.
+    private var mainWindow: NSWindow? {
+        NSApplication.shared.windows.first {
+            $0.canBecomeMain && !($0 is NSPanel) && $0.contentView != nil
+        }
     }
 }
 #endif

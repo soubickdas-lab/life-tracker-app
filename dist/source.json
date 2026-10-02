@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.4",
+      "version": "3.5",
       "versionDate": "2026-10-02T00:00:00Z",
       "versionDescription": "Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1138031,
+      "size": 1137910,
       "versions": [
         {
-          "version": "3.4",
-          "buildVersion": "26",
+          "version": "3.5",
+          "buildVersion": "27",
           "date": "2026-10-02",
           "localizedDescription": "Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1138031,
+          "size": 1137910,
           "minOSVersion": "18.0"
         }
       ]

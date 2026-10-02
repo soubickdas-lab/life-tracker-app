@@ -10,7 +10,7 @@ struct LifeTrackerApp: App {
     @State private var store = Store()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             RootView()
                 .environment(store)
         }
