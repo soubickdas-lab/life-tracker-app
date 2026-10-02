@@ -10,6 +10,7 @@ BUILD_NUMBER=$(DEVELOPER_DIR=/Library/Developer/CommandLineTools git rev-list --
 XC=/Applications/Xcode.app/Contents/Developer
 SWIFTC=$XC/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc
 SRC="LifeTracker/*.swift LifeTracker/Views/*.swift"
+WIDGET_SRC="LifeTrackerWidget/*.swift"
 
 if [ "$MODE" = "sim" ]; then
   SDK=$XC/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk
@@ -82,7 +83,56 @@ cat > "$OUT/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$OUT" >/dev/null 2>&1 || true
+# ---------------------------------------------------------------- the widget
+# A WidgetKit extension is its own little bundle living inside the app. It shares
+# the day with the app through an app group, and can also fetch for itself.
+APPEX="$OUT/PlugIns/LifeTrackerWidget.appex"
+mkdir -p "$APPEX"
+
+$SWIFTC -parse-as-library -O -target "$TARGET" -sdk "$SDK" \
+  -o "$APPEX/LifeTrackerWidget" \
+  LifeTrackerWidget/*.swift LifeTracker/Shared.swift \
+  -framework WidgetKit -framework SwiftUI
+
+cat > "$APPEX/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>Life Tracker Widget</string>
+	<key>CFBundleDisplayName</key><string>Life Tracker</string>
+	<key>CFBundleExecutable</key><string>LifeTrackerWidget</string>
+	<key>CFBundleIdentifier</key><string>com.soubick.lifetracker.widget</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundlePackageType</key><string>XPC!</string>
+	<key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
+	<key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
+	<key>MinimumOSVersion</key><string>18.0</string>
+	<key>CFBundleSupportedPlatforms</key><array><string>$PLATFORM</string></array>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string>
+	</dict>
+</dict>
+</plist>
+PLIST
+
+# both halves must name the same app group, or they cannot see each other
+for WHERE in "$OUT" "$APPEX"; do
+cat > "$WHERE/Entitlements.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array><string>group.com.soubick.lifetracker</string></array>
+</dict>
+</plist>
+PLIST
+done
+
+codesign --force --sign - --entitlements "$APPEX/Entitlements.plist" "$APPEX" >/dev/null 2>&1 || true
+codesign --force --sign - --entitlements "$OUT/Entitlements.plist" "$OUT" >/dev/null 2>&1 || true
 
 if [ "$MODE" = "sim" ]; then
   echo "app: $OUT"

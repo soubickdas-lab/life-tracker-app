@@ -21,7 +21,13 @@ final class Store {
 
     /// Who this device is signed in as. Kept so the app opens straight into the day.
     var token: String {
-        didSet { UserDefaults.standard.set(token, forKey: "token") }
+        didSet {
+            UserDefaults.standard.set(token, forKey: "token")
+            Shared.token = token              /* the widget signs in with the same one */
+            if let home = UserDefaults.standard.string(forKey: "apiHome") {
+                Shared.box.set(home, forKey: "apiHome")
+            }
+        }
     }
     var email = ""
     var waiting = false          /* signed in, but the account has not been let in yet */
@@ -566,6 +572,31 @@ final class Store {
     private func replanAlerts() {
         Notifier.reschedule(state, leadMinutes: reminderLead)
         Notifier.bookends(state, habitsDone: habitsDone, habitsTotal: state.habits.count)
+        leaveSnapshot()
+    }
+
+    /// A small picture of today, left where the widget can find it.
+    private func leaveSnapshot() {
+        guard let today = state.todayBlock else { return }
+        var snap = Shared.Snapshot()
+        snap.pretty = today.pretty
+        snap.done = today.doneCount
+        snap.total = today.tasks.count
+        snap.lines = today.tasks.filter { !$0.done }.prefix(6).map {
+            Shared.Snapshot.Line(text: $0.task, slot: $0.slot)
+        }
+        snap.habitsDone = habitsDone
+        snap.habitsTotal = state.habits.count
+        if let journey = state.journeys.first {
+            snap.journey = journey.name
+            snap.journeyLeft = journey.daysLeft
+            snap.journeyDone = journey.doneToday
+            snap.journeyDue = journey.dueToday
+        }
+        Shared.save(snap)
+        #if os(iOS)
+        Widgets.nudge()
+        #endif
     }
 
     private func flash(_ text: String) {
