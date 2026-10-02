@@ -11,24 +11,24 @@
       "bundleIdentifier": "com.soubick.lifetracker",
       "developerName": "Soubick",
       "subtitle": "Your Google Sheet, as a native app",
-      "localizedDescription": "Today, Tomorrow and Yesterday, habits with streaks, the month grid, goals, body log, notes, settings and the log — all of the Life Tracker sheet, on the phone. Local reminders before a timed task.",
+      "localizedDescription": "Your day, your habits and the long things, in one place. Today, Tomorrow and Yesterday with drag-to-reorder, habits with streaks and a month grid, a journey with a reverse countdown and daily proof photos, goals, body log, notes and the log. Subscribes your timed tasks to Apple or Google Calendar, reminds you before one starts, and puts the day on your home and lock screens.",
       "iconURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/icon.png",
       "tintColor": "5C6BF2",
-      "category": "productivity",
+      "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.3",
+      "version": "3.4",
       "versionDate": "2026-10-02T00:00:00Z",
-      "versionDescription": "Tick anywhere on a row, edit a task's time in place, every sheet tab on the phone.",
+      "versionDescription": "Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1138029,
+      "size": 1138031,
       "versions": [
         {
-          "version": "3.3",
-          "buildVersion": "25",
+          "version": "3.4",
+          "buildVersion": "26",
           "date": "2026-10-02",
-          "localizedDescription": "Tick anywhere on a row, edit a task's time in place, every sheet tab on the phone.",
+          "localizedDescription": "Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1138029,
+          "size": 1138031,
           "minOSVersion": "18.0"
         }
       ]
