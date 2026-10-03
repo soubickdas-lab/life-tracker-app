@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.6",
+      "version": "3.7",
       "versionDate": "2026-10-03T00:00:00Z",
-      "versionDescription": "Money tracker with a live balance and a starting balance for each month, an assistant you can talk to, the app opens instantly from its last known day, and a tidier look throughout.",
+      "versionDescription": "A small chat button on every screen opens the assistant. Money tracker with a live balance, instant start-up, and a tidier look throughout.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1327099,
+      "size": 1337082,
       "versions": [
         {
-          "version": "3.6",
-          "buildVersion": "28",
+          "version": "3.7",
+          "buildVersion": "29",
           "date": "2026-10-03",
-          "localizedDescription": "Money tracker with a live balance and a starting balance for each month, an assistant you can talk to, the app opens instantly from its last known day, and a tidier look throughout.",
+          "localizedDescription": "A small chat button on every screen opens the assistant. Money tracker with a live balance, instant start-up, and a tidier look throughout.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1327099,
+          "size": 1337082,
           "minOSVersion": "18.0"
         }
       ]

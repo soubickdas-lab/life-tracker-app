@@ -46,6 +46,7 @@ struct RootView: View {
     @Environment(Store.self) private var store
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
+    @State private var showChat = false
     @State private var copied = false
     #if os(iOS)
     @AppStorage("phoneTab") private var phoneTab = 0   /* reopen where you left off */
@@ -61,7 +62,15 @@ struct RootView: View {
                 OwnerView()
             } else {
                 content
+                    .overlay(alignment: .bottomTrailing) { chatButton }
             }
+        }
+        .sheet(isPresented: $showChat) {
+            AssistantScreen(onClose: { showChat = false })
+                .environment(store)
+                #if os(macOS)
+                .frame(width: 460, height: 620)
+                #endif
         }
         .task {
             /* the day is already on screen from the cache — these two just freshen
@@ -87,6 +96,27 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $showSettings) { accountSheet }
+    }
+
+    /// The assistant, one tap away from wherever you are.
+    private var chatButton: some View {
+        Button { showChat = true } label: {
+            Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 42, height: 42)
+                .background(UI.accent, in: Circle())
+                .shadow(color: UI.accent.opacity(0.35), radius: 9, y: 4)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Assistant")
+        #if os(iOS)
+        .padding(.trailing, 16)
+        .padding(.bottom, 62)            /* clear of the tab bar */
+        #else
+        .padding(20)
+        #endif
     }
 
     private func open(_ address: String) {
@@ -253,7 +283,6 @@ struct RootView: View {
         case .habits:    HabitsScreen()
         case .journey:   JourneyScreen()
         case .money:     MoneyScreen()
-        case .assistant: AssistantScreen()
         case .dash:      DashboardScreen()
         case .scheduled: ScheduledScreen()
         case .longTerm:  GoalsScreen()
@@ -278,9 +307,6 @@ struct RootView: View {
     private var moreTab: some View {
         NavigationStack {
             List {
-                Section {
-                    pageLink(.assistant)
-                }
                 Section("Days") {
                     pageLink(.yesterday)
                     pageLink(.scheduled)

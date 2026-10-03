@@ -5,6 +5,7 @@ import SwiftUI
 /// the same calls the buttons make, so everything it changes shows up everywhere.
 struct AssistantScreen: View {
     @Environment(Store.self) private var store
+    var onClose: (() -> Void)?
     @State private var draft = ""
     @FocusState private var typing: Bool
 
@@ -19,6 +20,8 @@ struct AssistantScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            header
+            Divider()
             ScrollViewReader { reader in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
@@ -44,33 +47,47 @@ struct AssistantScreen: View {
             composer
         }
         .background(UI.canvas)
-        .toolbar {
+        .onAppear { typing = true }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(UI.violet)
+            Text("Assistant").font(.system(size: 15, weight: .semibold))
+            Spacer()
             if !store.chat.isEmpty {
-                ToolbarItem {
-                    Button { store.clearChat() } label: { Image(systemName: "trash") }
-                        .help("Start over")
+                Button { store.clearChat() } label: {
+                    Image(systemName: "trash").font(.system(size: 13))
+                        .frame(width: 30, height: 30).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Start over")
+            }
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                        .background(Color.primary.opacity(0.06), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .keyboardShortcut(.cancelAction)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Before anything is said
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(UI.violet)
-                    .frame(width: 44, height: 44)
-                    .background(UI.violet.opacity(0.13), in: Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Assistant")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                    Text("Tell it what to do, or ask what you want to know.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-            }
+            Text("Tell it what to do, or ask what you want to know. Try one:")
+                .font(.system(size: 13)).foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(ideas, id: \.self) { idea in
