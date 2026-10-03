@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.7",
+      "version": "3.8",
       "versionDate": "2026-10-03T00:00:00Z",
       "versionDescription": "A small chat button on every screen opens the assistant. Money tracker with a live balance, instant start-up, and a tidier look throughout.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1337082,
+      "size": 1337269,
       "versions": [
         {
-          "version": "3.7",
-          "buildVersion": "29",
+          "version": "3.8",
+          "buildVersion": "30",
           "date": "2026-10-03",
           "localizedDescription": "A small chat button on every screen opens the assistant. Money tracker with a live balance, instant start-up, and a tidier look throughout.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1337082,
+          "size": 1337269,
           "minOSVersion": "18.0"
         }
       ]

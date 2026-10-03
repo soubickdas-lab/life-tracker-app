@@ -15,8 +15,8 @@ cp build/LifeTracker.ipa dist/LifeTracker.ipa
 cp LifeTracker/Assets.xcassets/AppIcon.appiconset/icon_1024.png dist/icon.png
 
 SIZE=$(stat -f%z dist/LifeTracker.ipa)
-VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" build/ios/LifeTracker.app/Info.plist)
-BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" build/ios/LifeTracker.app/Info.plist)
+VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" build/ios.noindex/LifeTracker.app/Info.plist)
+BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" build/ios.noindex/LifeTracker.app/Info.plist)
 DATE=$(date -u +%Y-%m-%d)
 NOTES=${NOTES:-"Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date."}
 

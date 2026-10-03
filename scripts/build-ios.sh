@@ -16,12 +16,12 @@ if [ "$MODE" = "sim" ]; then
   SDK=$XC/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk
   TARGET=arm64-apple-ios18.0-simulator
   PLATFORM=iPhoneSimulator
-  OUT=build/sim/LifeTracker.app
+  OUT=build/sim.noindex/LifeTracker.app
 else
   SDK=$XC/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk
   TARGET=arm64-apple-ios18.0
   PLATFORM=iPhoneOS
-  OUT=build/ios/LifeTracker.app
+  OUT=build/ios.noindex/LifeTracker.app
 fi
 
 rm -rf "$OUT"; mkdir -p "$OUT"
@@ -134,14 +134,18 @@ done
 codesign --force --sign - --entitlements "$APPEX/Entitlements.plist" "$APPEX" >/dev/null 2>&1 || true
 codesign --force --sign - --entitlements "$OUT/Entitlements.plist" "$OUT" >/dev/null 2>&1 || true
 
+# An iPhone build is not something the Mac can open — keep it off its list of apps.
+LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSREG" -u "$(pwd)/$OUT" >/dev/null 2>&1 || true
+
 if [ "$MODE" = "sim" ]; then
   echo "app: $OUT"
   exit 0
 fi
 
-rm -rf build/Payload build/LifeTracker.ipa
-mkdir -p build/Payload
-cp -R "$OUT" build/Payload/
-(cd build && zip -qry LifeTracker.ipa Payload)
-rm -rf build/Payload
+rm -rf build/pack.noindex build/LifeTracker.ipa
+mkdir -p build/pack.noindex/Payload
+cp -R "$OUT" build/pack.noindex/Payload/
+(cd build/pack.noindex && zip -qry ../LifeTracker.ipa Payload)
+rm -rf build/pack.noindex
 echo "ipa: $(pwd)/build/LifeTracker.ipa  — install this through SideStore"

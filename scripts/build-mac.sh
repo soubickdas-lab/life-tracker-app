@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR=/Library/Developer/CommandLineTools
 SDK=$(xcrun --sdk macosx --show-sdk-path)
-OUT=${1:-build/Life Tracker.app}
+OUT=${1:-build/mac.noindex/Life Tracker.app}
 APP_VERSION=$(cat VERSION 2>/dev/null || echo 1.0)
 
 rm -rf "$OUT"
@@ -47,3 +47,18 @@ PLIST
 [ -f build/LifeTracker.icns ] && cp build/LifeTracker.icns "$OUT/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$OUT" >/dev/null 2>&1 || true
 echo "built: $OUT"
+
+# One copy that the Dock, Spotlight and Launchpad all agree on. The build folder's
+# own copy is taken off the Mac's list of apps, so there is never a second one.
+#   INSTALL=0 ./scripts/build-mac.sh   builds without touching the installed app
+LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSREG" -u "$(pwd)/$OUT" >/dev/null 2>&1 || true
+
+if [ "${INSTALL:-1}" = "1" ] && [ -z "$1" ]; then
+  DEST="/Applications/Life Tracker.app"
+  [ -w /Applications ] || { DEST="$HOME/Applications/Life Tracker.app"; mkdir -p "$HOME/Applications"; }
+  rm -rf "$DEST"
+  cp -R "$OUT" "$DEST"
+  "$LSREG" -f "$DEST" >/dev/null 2>&1 || true
+  echo "installed: $DEST"
+fi

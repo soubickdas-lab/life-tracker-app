@@ -13,6 +13,9 @@ struct LifeTrackerApp: App {
         WindowGroup(id: "main") {
             RootView()
                 .environment(store)
+                #if os(macOS)
+                .frame(minWidth: 860, minHeight: 600)
+                #endif
         }
         #if os(macOS)
         .defaultSize(width: 980, height: 800)

@@ -91,6 +91,8 @@ struct Tag: View {
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(tint.opacity(strong ? 0.18 : 0.10), in: Capsule())
@@ -215,6 +217,7 @@ struct Page<Content: View>: View {
                 content
             }
             .padding(UI.gutter)
+            .padding(.bottom, 56)             /* room to scroll the last row clear of the chat button */
             .frame(maxWidth: 860)
             .frame(maxWidth: .infinity)
         }
