@@ -75,6 +75,8 @@ cat > "$OUT/Info.plist" <<PLIST
 		<key>CFBundleURLName</key><string>com.soubick.lifetracker</string>
 		<key>CFBundleURLSchemes</key><array><string>lifetracker</string></array>
 	</dict></array>
+	<key>NSMicrophoneUsageDescription</key><string>So you can say what you want to the assistant instead of typing it.</string>
+	<key>NSSpeechRecognitionUsageDescription</key><string>So what you say to the assistant can be turned into text.</string>
 	<key>NSCameraUsageDescription</key><string>So you can photograph the day's proof — the step count, the morning picture — straight into your journey.</string>
 	<key>NSPhotoLibraryUsageDescription</key><string>So you can pick a screenshot or a photo you already took as the day's proof.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key><string>So the photos you save from a journey land in your library.</string>

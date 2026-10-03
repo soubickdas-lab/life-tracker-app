@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.8",
+      "version": "3.9",
       "versionDate": "2026-10-03T00:00:00Z",
-      "versionDescription": "A small chat button on every screen opens the assistant. Money tracker with a live balance, instant start-up, and a tidier look throughout.",
+      "versionDescription": "The assistant gets shortcuts (Add task, Spent, Received, Tick habit, Weight, Note), voice typing, and saves what you say in Hinglish as clean English.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1337269,
+      "size": 1361661,
       "versions": [
         {
-          "version": "3.8",
-          "buildVersion": "30",
+          "version": "3.9",
+          "buildVersion": "31",
           "date": "2026-10-03",
-          "localizedDescription": "A small chat button on every screen opens the assistant. Money tracker with a live balance, instant start-up, and a tidier look throughout.",
+          "localizedDescription": "The assistant gets shortcuts (Add task, Spent, Received, Tick habit, Weight, Note), voice typing, and saves what you say in Hinglish as clean English.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1337269,
+          "size": 1361661,
           "minOSVersion": "18.0"
         }
       ]

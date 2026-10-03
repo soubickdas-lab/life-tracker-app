@@ -7,7 +7,20 @@ struct AssistantScreen: View {
     @Environment(Store.self) private var store
     var onClose: (() -> Void)?
     @State private var draft = ""
+    @State private var voice = Dictation()
+    @State private var beforeVoice = ""          /* what was in the box when the mic went on */
     @FocusState private var typing: Bool
+
+    /// The starts of the things said most. A tap puts one in the box, ready to finish.
+    private let shortcuts: [(label: String, icon: String, text: String)] = [
+        ("Add task", "plus.circle", "Add task: "),
+        ("Tomorrow", "arrow.right.circle", "Tomorrow: "),
+        ("Spent", "arrow.up.right", "Spent: "),
+        ("Received", "arrow.down.left", "Received: "),
+        ("Tick habit", "flame", "Tick habit: "),
+        ("Weight", "scalemass", "Weight: "),
+        ("Note", "note.text", "Note: "),
+    ]
 
     private let ideas = [
         "Aaj kya kya bacha hai?",
@@ -91,7 +104,7 @@ struct AssistantScreen: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(ideas, id: \.self) { idea in
-                    Button { send(idea) } label: {
+                    Button { fill(idea) } label: {
                         HStack {
                             Text(idea).font(.system(size: 13))
                             Spacer()
@@ -147,8 +160,47 @@ struct AssistantScreen: View {
     // MARK: - Saying something
 
     private var composer: some View {
+        VStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(shortcuts, id: \.label) { shortcut in
+                        Button { fill(shortcut.text) } label: {
+                            Label(shortcut.label, systemImage: shortcut.icon)
+                                .font(.system(size: 12, weight: .medium))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .background(UI.accent.opacity(0.10), in: Capsule())
+                                .foregroundStyle(UI.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, UI.gutter)
+            }
+
+            if let problem = voice.problem {
+                Text(problem)
+                    .font(.system(size: 11)).foregroundStyle(UI.rose)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, UI.gutter)
+            }
+
+            inputRow
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity)
+        .background(UI.canvas)
+        .onChange(of: voice.heard) { _, words in
+            guard voice.listening || !words.isEmpty else { return }
+            draft = beforeVoice.isEmpty ? words : beforeVoice + words
+        }
+        .onDisappear { voice.stop() }
+    }
+
+    private var inputRow: some View {
         HStack(spacing: 10) {
-            TextField("Ask, or tell it what to do…", text: $draft, axis: .vertical)
+            TextField(voice.listening ? "Listening…" : "Ask, or tell it what to do…", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...4)
@@ -158,6 +210,19 @@ struct AssistantScreen: View {
                 .padding(.vertical, 10)
                 .background(Color.primary.opacity(0.05),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            Button {
+                if !voice.listening { beforeVoice = draft }
+                voice.toggle()
+            } label: {
+                Image(systemName: voice.listening ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(voice.listening ? .white : UI.accent)
+                    .frame(width: 34, height: 34)
+                    .background(voice.listening ? UI.rose : UI.accent.opacity(0.12), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help(voice.listening ? "Stop listening" : "Speak instead of typing")
 
             Button { send(draft) } label: {
                 Image(systemName: "arrow.up")
@@ -170,10 +235,17 @@ struct AssistantScreen: View {
             .disabled(!canSend)
         }
         .padding(.horizontal, UI.gutter)
-        .padding(.vertical, 10)
-        .frame(maxWidth: 760)
-        .frame(maxWidth: .infinity)
-        .background(UI.canvas)
+    }
+
+    /// Puts a start in the box — replacing any other start already there — and
+    /// leaves the cursor after it.
+    private func fill(_ text: String) {
+        var rest = draft
+        for shortcut in shortcuts where rest.hasPrefix(shortcut.text) {
+            rest = String(rest.dropFirst(shortcut.text.count))
+        }
+        draft = text.hasSuffix(": ") ? text + rest : text
+        typing = true
     }
 
     private var canSend: Bool {
@@ -183,6 +255,8 @@ struct AssistantScreen: View {
     private func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !store.thinking else { return }
+        voice.stop()
+        beforeVoice = ""
         draft = ""
         Task { await store.ask(clean) }
     }
