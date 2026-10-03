@@ -27,8 +27,7 @@ cat > "$OUT/Contents/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>com.soubick.lifetracker</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>NSMicrophoneUsageDescription</key><string>So you can say what you want to the assistant instead of typing it.</string>
-	<key>NSSpeechRecognitionUsageDescription</key><string>So what you say to the assistant can be turned into text.</string>
+	<key>NSMicrophoneUsageDescription</key><string>So you can record a voice message for the assistant instead of typing.</string>
 	<key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>LSMinimumSystemVersion</key><string>15.0</string>

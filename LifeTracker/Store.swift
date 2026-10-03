@@ -290,6 +290,36 @@ final class Store {
         }
     }
 
+    /// The same, spoken. The bubble shows a mic until the words come back.
+    func ask(voice: Data) async {
+        guard !thinking else { return }
+        let before = chat.filter { !$0.failed }.suffix(12).map {
+            ["role": $0.mine ? "user" : "model", "text": $0.text]
+        }
+        let mine = ChatLine(mine: true, text: "🎤 …")
+        chat.append(mine)
+        thinking = true
+        defer { thinking = false }
+
+        do {
+            let answer = try await api.ask("", history: Array(before), voice: voice)
+            if let at = chat.firstIndex(where: { $0.id == mine.id }) {
+                let words = (answer.heard ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                chat[at].text = words.isEmpty ? "🎤 (nothing heard)" : words
+            }
+            if let fresh = answer.state {
+                issued += 1
+                state = fresh
+                replanAlerts()
+            }
+            if let month = answer.money { extra.money = month }
+            chat.append(ChatLine(mine: false, text: answer.reply ?? "Done."))
+        } catch {
+            if let at = chat.firstIndex(where: { $0.id == mine.id }) { chat[at].text = "🎤 voice message" }
+            chat.append(ChatLine(mine: false, text: error.localizedDescription, failed: true))
+        }
+    }
+
     func clearChat() { chat = [] }
 
     // MARK: - Money

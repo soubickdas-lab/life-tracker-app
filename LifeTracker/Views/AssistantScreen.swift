@@ -7,8 +7,7 @@ struct AssistantScreen: View {
     @Environment(Store.self) private var store
     var onClose: (() -> Void)?
     @State private var draft = ""
-    @State private var voice = Dictation()
-    @State private var beforeVoice = ""          /* what was in the box when the mic went on */
+    @State private var voice = VoiceNote()
     @FocusState private var typing: Bool
 
     /// The starts of the things said most. A tap puts one in the box, ready to finish.
@@ -191,16 +190,23 @@ struct AssistantScreen: View {
         .frame(maxWidth: 760)
         .frame(maxWidth: .infinity)
         .background(UI.canvas)
-        .onChange(of: voice.heard) { _, words in
-            guard voice.listening || !words.isEmpty else { return }
-            draft = beforeVoice.isEmpty ? words : beforeVoice + words
+        .onChange(of: voice.seconds) { _, now in
+            if now >= VoiceNote.limit { sendVoice() }        /* long enough — off it goes */
         }
-        .onDisappear { voice.stop() }
+        .onDisappear { voice.cancel() }
     }
 
-    private var inputRow: some View {
+    @ViewBuilder private var inputRow: some View {
+        if voice.recording {
+            recordingRow
+        } else {
+            typingRow
+        }
+    }
+
+    private var typingRow: some View {
         HStack(spacing: 10) {
-            TextField(voice.listening ? "Listening…" : "Ask, or tell it what to do…", text: $draft, axis: .vertical)
+            TextField("Type, or tap the mic and speak…", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...4)
@@ -211,18 +217,16 @@ struct AssistantScreen: View {
                 .background(Color.primary.opacity(0.05),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            Button {
-                if !voice.listening { beforeVoice = draft }
-                voice.toggle()
-            } label: {
-                Image(systemName: voice.listening ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(voice.listening ? .white : UI.accent)
-                    .frame(width: 34, height: 34)
-                    .background(voice.listening ? UI.rose : UI.accent.opacity(0.12), in: Circle())
+            Button { voice.start() } label: {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(UI.accent)
+                    .frame(width: 38, height: 38)
+                    .background(UI.accent.opacity(0.12), in: Circle())
             }
             .buttonStyle(.plain)
-            .help(voice.listening ? "Stop listening" : "Speak instead of typing")
+            .disabled(store.thinking)
+            .help("Tap to record a voice message")
 
             Button { send(draft) } label: {
                 Image(systemName: "arrow.up")
@@ -235,6 +239,55 @@ struct AssistantScreen: View {
             .disabled(!canSend)
         }
         .padding(.horizontal, UI.gutter)
+    }
+
+    /// While it listens: a red dot, the time, a way out, and one big button to send.
+    private var recordingRow: some View {
+        HStack(spacing: 12) {
+            Button { voice.cancel() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 34)
+                    .background(Color.primary.opacity(0.06), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Throw this recording away")
+
+            HStack(spacing: 9) {
+                Circle().fill(UI.rose).frame(width: 9, height: 9)
+                    .opacity(voice.seconds % 2 == 0 ? 1 : 0.35)
+                    .animation(.easeInOut(duration: 0.6), value: voice.seconds)
+                Text("Recording  \(voice.seconds / 60):\(String(format: "%02d", voice.seconds % 60))")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                Spacer(minLength: 0)
+                Text("bolo… phir bhejo")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(UI.rose.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            Button { sendVoice() } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(UI.rose, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Stop and send")
+        }
+        .padding(.horizontal, UI.gutter)
+    }
+
+    private func sendVoice() {
+        guard let sound = voice.finish() else {
+            voice.cancel()
+            return
+        }
+        Task { await store.ask(voice: sound) }
     }
 
     /// Puts a start in the box — replacing any other start already there — and
@@ -255,8 +308,7 @@ struct AssistantScreen: View {
     private func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !store.thinking else { return }
-        voice.stop()
-        beforeVoice = ""
+        voice.cancel()
         draft = ""
         Task { await store.ask(clean) }
     }

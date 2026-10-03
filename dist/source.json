@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.9",
+      "version": "4.0",
       "versionDate": "2026-10-03T00:00:00Z",
-      "versionDescription": "The assistant gets shortcuts (Add task, Spent, Received, Tick habit, Weight, Note), voice typing, and saves what you say in Hinglish as clean English.",
+      "versionDescription": "Voice messages for the assistant: tap the mic, speak in Hinglish or English, send. It now understands mixed speech properly, writes it in normal letters, and can edit or delete anything.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1361661,
+      "size": 1375998,
       "versions": [
         {
-          "version": "3.9",
-          "buildVersion": "31",
+          "version": "4.0",
+          "buildVersion": "32",
           "date": "2026-10-03",
-          "localizedDescription": "The assistant gets shortcuts (Add task, Spent, Received, Tick habit, Weight, Note), voice typing, and saves what you say in Hinglish as clean English.",
+          "localizedDescription": "Voice messages for the assistant: tap the mic, speak in Hinglish or English, send. It now understands mixed speech properly, writes it in normal letters, and can edit or delete anything.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1361661,
+          "size": 1375998,
           "minOSVersion": "18.0"
         }
       ]

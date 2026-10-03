@@ -308,13 +308,14 @@ struct TrackerAPI: Sendable {
         var reply: String?
         var error: String?
         var setup: Bool?
+        var heard: String?            /* what a voice note was understood to say */
         var state: TrackerState?
         var money: MoneyMonth?
     }
 
     /// Says something to the assistant. It may change things on the way to its
     /// answer, so the day it hands back replaces the one on screen.
-    func ask(_ message: String, history: [[String: String]]) async throws -> Answer {
+    func ask(_ message: String, history: [[String: String]], voice: Data? = nil) async throws -> Answer {
         guard isConfigured else { throw Failure.notConfigured }
         guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
         parts.queryItems = [URLQueryItem(name: "api", value: "ask")]
@@ -325,7 +326,12 @@ struct TrackerAPI: Sendable {
         request.timeoutInterval = 90
         request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["message": message, "history": history])
+        var body: [String: Any] = ["message": message, "history": history]
+        if let voice {
+            body["audio"] = voice.base64EncodedString()
+            body["mime"] = "audio/wav"
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data = try await URLSession.shared.data(for: request).0
         let answer = try JSONDecoder().decode(Answer.self, from: data)
