@@ -7,6 +7,7 @@ struct TrackerState: Codable, Sendable {
     var habits: [Habit] = []
     var weight: String = ""
     var journeys: [Journey] = []
+    var money = MoneySummary()
     var notes: [Note] = []
 
     var todayBlock: DayBlock? { days.first { $0.label == "Today" } }
@@ -20,6 +21,7 @@ struct TrackerState: Codable, Sendable {
         habits = (try? c.decode([Habit].self, forKey: .habits)) ?? []
         weight = (try? c.decode(String.self, forKey: .weight)) ?? ""
         journeys = (try? c.decode([Journey].self, forKey: .journeys)) ?? []
+        money = (try? c.decode(MoneySummary.self, forKey: .money)) ?? MoneySummary()
         notes = (try? c.decode([Note].self, forKey: .notes)) ?? []
     }
 }
@@ -199,6 +201,7 @@ struct APIReply: Codable, Sendable {
     var error: String?
     var state: TrackerState?
     var extra: SheetExtra?
+    var money: MoneyMonth?            /* a money call answers with the month it changed */
 }
 
 // MARK: - The rest of the sheet
@@ -214,6 +217,7 @@ struct SheetExtra: Codable, Sendable {
     var history: [HistoryDay] = []
     var habitGrid: HabitGridData = HabitGridData()
     var dash: DashData = DashData()
+    var money = MoneyMonth()
 
     init() {}
 
@@ -229,6 +233,7 @@ struct SheetExtra: Codable, Sendable {
         history = (try? c.decode([HistoryDay].self, forKey: .history)) ?? []
         habitGrid = (try? c.decode(HabitGridData.self, forKey: .habitGrid)) ?? HabitGridData()
         dash = (try? c.decode(DashData.self, forKey: .dash)) ?? DashData()
+        money = (try? c.decode(MoneyMonth.self, forKey: .money)) ?? MoneyMonth()
     }
 }
 

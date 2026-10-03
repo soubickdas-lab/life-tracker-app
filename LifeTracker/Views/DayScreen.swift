@@ -24,11 +24,12 @@ struct DayScreen: View {
                 header(day)
                 if label == "Today" {
                     ForEach(store.state.journeys) { JourneyStrip(journey: $0) }
+                    if !store.state.money.isEmpty { MoneyStrip(money: store.state.money) }
                 }
                 tasks(day)
                 if label == "Today" { habits; weight }
             } else {
-                Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your sheet…") }
+                Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your day…") }
             }
         }
         .contentShape(Rectangle())

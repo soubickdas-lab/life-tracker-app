@@ -17,6 +17,8 @@ struct DashboardScreen: View {
                 StatTile(label: "Habit rate", value: "\(dash.habitPct)%", tint: UI.sky)
                 StatTile(label: "Best streak", value: "\(dash.bestStreak)", tint: UI.amber)
                 StatTile(label: "Weight", value: store.state.weight.isEmpty ? "—" : "\(store.state.weight) kg", tint: UI.rose)
+                StatTile(label: "Balance", value: Rupees.text(store.state.money.balance), tint: UI.mint)
+                StatTile(label: "Spent this month", value: Rupees.text(store.state.money.went), tint: UI.amber)
             }
 
             Panel {

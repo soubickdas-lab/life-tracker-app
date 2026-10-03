@@ -45,9 +45,7 @@ struct HabitsScreen: View {
             }
 
             #if os(macOS)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) { days(row, grid: grid) }
-            }
+            HStack(spacing: 4) { days(row, grid: grid) }      /* squares share the width */
             #else
             LazyVGrid(columns: [GridItem(.adaptive(minimum: dot, maximum: dot), spacing: 5, alignment: .leading)],
                       spacing: 5) {
@@ -70,7 +68,11 @@ struct HabitsScreen: View {
             } label: {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(on ? UI.mint : Color.primary.opacity(due ? 0.06 : 0.015))
+                    #if os(macOS)
+                    .frame(maxWidth: .infinity, minHeight: dot, maxHeight: dot)
+                    #else
                     .frame(width: dot, height: dot)
+                    #endif
                     .overlay {
                         if isToday {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)

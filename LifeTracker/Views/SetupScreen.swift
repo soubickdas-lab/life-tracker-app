@@ -14,7 +14,7 @@ struct SetupScreen: View {
 
     var body: some View {
         Page {
-            PageTitle("Setup", subtitle: "Everything the sheet's ⚙️ tab holds")
+            PageTitle("Setup", subtitle: "Reminders, habits, categories and how the day behaves")
             reminders
             settings
             habits

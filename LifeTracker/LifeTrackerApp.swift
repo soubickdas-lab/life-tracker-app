@@ -64,9 +64,12 @@ struct RootView: View {
             }
         }
         .task {
-            await store.checkDoor()
+            /* the day is already on screen from the cache — these two just freshen
+               it, and neither waits on the other */
+            async let door: Void = store.checkDoor()
+            async let day: Void = store.refresh(quietly: !store.state.days.isEmpty)
+            _ = await (door, day)
             if store.isConfigured {
-                await store.refresh()
                 Notifier.askOnce()          /* only once there is something to remind about */
             }
         }
@@ -209,8 +212,8 @@ struct RootView: View {
                     .tabItem { Label("Long Term", systemImage: Pane.longTerm.icon) }
                     .tag(2)
             }
-            wrap(ScheduledScreen(), "Scheduled")
-                .tabItem { Label("Plan", systemImage: "calendar") }
+            wrap(MoneyScreen(), "Money")
+                .tabItem { Label("Money", systemImage: Pane.money.icon) }
                 .tag(3)
             moreTab
                 .tabItem { Label("More", systemImage: "square.grid.2x2") }
@@ -233,7 +236,7 @@ struct RootView: View {
                             Button { Task { await store.refresh() } } label: {
                                 Image(systemName: "arrow.clockwise")
                             }
-                            .help("Refresh from the sheet")
+                            .help("Refresh")
                         }
                         settingsButton
                     }
@@ -249,6 +252,8 @@ struct RootView: View {
             DayScreen(label: pane.dayLabel ?? "Today")
         case .habits:    HabitsScreen()
         case .journey:   JourneyScreen()
+        case .money:     MoneyScreen()
+        case .assistant: AssistantScreen()
         case .dash:      DashboardScreen()
         case .scheduled: ScheduledScreen()
         case .longTerm:  GoalsScreen()
@@ -273,7 +278,13 @@ struct RootView: View {
     private var moreTab: some View {
         NavigationStack {
             List {
-                Section("Days") { pageLink(.yesterday) }
+                Section {
+                    pageLink(.assistant)
+                }
+                Section("Days") {
+                    pageLink(.yesterday)
+                    pageLink(.scheduled)
+                }
                 Section("Tracking") {
                     if !store.state.journeys.isEmpty { pageLink(.longTerm) }
                     pageLink(.habits)
@@ -281,7 +292,7 @@ struct RootView: View {
                     pageLink(.body)
                     pageLink(.notes)
                 }
-                Section("The sheet") {
+                Section("App") {
                     pageLink(.setup)
                     pageLink(.log)
                 }

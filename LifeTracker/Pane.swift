@@ -3,7 +3,7 @@ import Foundation
 /// The sheet's own tab bar, in the same order — one sidebar row per tab.
 enum Pane: String, CaseIterable, Identifiable, Sendable {
     case today, tomorrow, yesterday
-    case habits, journey, dash, scheduled, longTerm, body, notes, setup, log
+    case habits, journey, money, assistant, dash, scheduled, longTerm, body, notes, setup, log
 
     var id: String { rawValue }
 
@@ -14,6 +14,8 @@ enum Pane: String, CaseIterable, Identifiable, Sendable {
         case .yesterday: return "Yesterday"
         case .habits:    return "Habits"
         case .journey:   return "Journey"
+        case .money:     return "Money"
+        case .assistant: return "Assistant"
         case .dash:      return "Dashboard"
         case .scheduled: return "Scheduled"
         case .longTerm:  return "Long Term"
@@ -31,6 +33,8 @@ enum Pane: String, CaseIterable, Identifiable, Sendable {
         case .yesterday: return "arrow.left.circle"
         case .habits:    return "flame"
         case .journey:   return "flag.checkered"
+        case .money:     return "indianrupeesign.circle"
+        case .assistant: return "sparkles"
         case .dash:      return "chart.bar"
         case .scheduled: return "calendar"
         case .longTerm:  return "target"

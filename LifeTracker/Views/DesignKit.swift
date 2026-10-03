@@ -164,6 +164,8 @@ struct StatTile: View {
             Text(value)
                 .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)          /* a long figure shrinks; it never wraps */
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)

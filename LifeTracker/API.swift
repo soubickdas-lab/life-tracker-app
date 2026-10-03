@@ -301,7 +301,57 @@ struct TrackerAPI: Sendable {
         return (r.0, r.1)
     }
 
+    // MARK: - Assistant
+
+    struct Answer: Decodable, Sendable {
+        var ok: Bool
+        var reply: String?
+        var error: String?
+        var setup: Bool?
+        var state: TrackerState?
+        var money: MoneyMonth?
+    }
+
+    /// Says something to the assistant. It may change things on the way to its
+    /// answer, so the day it hands back replaces the one on screen.
+    func ask(_ message: String, history: [[String: String]]) async throws -> Answer {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
+        parts.queryItems = [URLQueryItem(name: "api", value: "ask")]
+        guard let url = parts.url else { throw Failure.badURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 90
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["message": message, "history": history])
+
+        let data = try await URLSession.shared.data(for: request).0
+        let answer = try JSONDecoder().decode(Answer.self, from: data)
+        guard answer.ok else { throw Failure.server(answer.error ?? "The assistant could not answer.") }
+        return answer
+    }
+
+    // MARK: - Money
+
+    /// Any money call: add, edit, remove, set what the month began with, or just
+    /// look at another month. Each answers with the day's numbers and that month.
+    func money(_ params: [String: String]) async throws -> (TrackerState, MoneyMonth?) {
+        let answer = try await reply(params)
+        guard let state = answer.state else { throw Failure.server(answer.error ?? "The server said no.") }
+        return (state, answer.money)
+    }
+
     private func raw(_ params: [String: String]) async throws -> (TrackerState, String, SheetExtra?) {
+        let answer = try await reply(params)
+        guard let state = answer.state else {
+            throw Failure.server(answer.error ?? "The server said no.")
+        }
+        return (state, answer.said ?? "", answer.extra)
+    }
+
+    private func reply(_ params: [String: String]) async throws -> APIReply {
         guard isConfigured else { throw Failure.notConfigured }
         guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
 
@@ -322,9 +372,9 @@ struct TrackerAPI: Sendable {
             reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
         }
         if reply.pending == true { throw Failure.waiting }
-        guard reply.ok, let state = reply.state else {
-            throw Failure.server(reply.error ?? "The sheet said no.")
+        guard reply.ok else {
+            throw Failure.server(reply.error ?? "The server said no.")
         }
-        return (state, reply.said ?? "", reply.extra)
+        return reply
     }
 }

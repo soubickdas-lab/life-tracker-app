@@ -71,6 +71,12 @@ final class Store {
 
     init() {
         token = UserDefaults.standard.string(forKey: "token") ?? ""
+        if let kept = Cache.load() {
+            state = kept.state
+            extra = kept.extra
+            email = kept.email
+            calendarLink = kept.calendar
+        }
     }
 
     // MARK: - The door
@@ -119,6 +125,7 @@ final class Store {
 
     func signOut() {
         wentAway()
+        Cache.clear()
         token = ""
         email = ""
         waiting = false
@@ -242,6 +249,135 @@ final class Store {
         let ids = list.map(\.id).filter { !$0.hasPrefix("pending-") }
         let client = api
         await runWithReply { try await client.setOrder(ids) }
+    }
+
+    // MARK: - Assistant
+
+    struct ChatLine: Identifiable, Equatable {
+        var id = UUID()
+        var mine: Bool
+        var text: String
+        var failed = false
+    }
+
+    var chat: [ChatLine] = []
+    var thinking = false
+
+    /// One thing said to the assistant. Whatever it changed comes back with the
+    /// answer, so every screen is already right by the time you read the reply.
+    func ask(_ text: String) async {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !thinking else { return }
+
+        let before = chat.filter { !$0.failed }.suffix(12).map {
+            ["role": $0.mine ? "user" : "model", "text": $0.text]
+        }
+        chat.append(ChatLine(mine: true, text: clean))
+        thinking = true
+        defer { thinking = false }
+
+        do {
+            let answer = try await api.ask(clean, history: Array(before))
+            if let fresh = answer.state {
+                issued += 1                         /* anything still in flight is older than this */
+                state = fresh
+                replanAlerts()
+            }
+            if let month = answer.money { extra.money = month }
+            chat.append(ChatLine(mine: false, text: answer.reply ?? "Done."))
+        } catch {
+            chat.append(ChatLine(mine: false, text: error.localizedDescription, failed: true))
+        }
+    }
+
+    func clearChat() { chat = [] }
+
+    // MARK: - Money
+
+    /// The month the money screen is showing — this one unless you paged back.
+    var moneyShowing: String { extra.money.month.isEmpty ? state.money.month : extra.money.month }
+    var moneyIsThisMonth: Bool { moneyShowing == state.money.month }
+
+    /// A rupee in or out. It is on the list and in the balance before the server
+    /// has heard of it; the reply then swaps the stand-in for the real row.
+    func addMoney(amount: Double, isIn: Bool, category: String, note: String, day: String? = nil) async {
+        guard amount > 0 else { return }
+        let when = day ?? state.today
+        let kind = isIn ? "in" : "out"
+
+        if when.hasPrefix(moneyShowing) {
+            extra.money.entries.insert(
+                MoneyEntry(id: -Int.random(in: 1...9_999_999), day: when, amount: amount,
+                           kind: kind, category: category, note: note), at: 0)
+        }
+        if when.hasPrefix(state.money.month) {
+            if isIn { state.money.came += amount } else { state.money.went += amount }
+            state.money.balance += isIn ? amount : -amount
+            state.money.entries += 1
+            if when == state.today {
+                if isIn { state.money.todayIn += amount } else { state.money.todayOut += amount }
+            }
+        }
+
+        var params = ["api": "money", "amount": String(amount), "kind": kind,
+                      "category": category, "note": note, "show": moneyShowing]
+        if let day { params["day"] = day }
+        await runMoney(params)
+    }
+
+    func deleteMoney(_ entry: MoneyEntry) async {
+        extra.money.entries.removeAll { $0.id == entry.id }
+        if entry.day.hasPrefix(state.money.month) {
+            if entry.isIn { state.money.came -= entry.amount } else { state.money.went -= entry.amount }
+            state.money.balance += entry.isIn ? -entry.amount : entry.amount
+        }
+        guard entry.id > 0 else { return }          /* never reached the server */
+        await runMoney(["api": "moneydel", "id": String(entry.id), "show": moneyShowing])
+    }
+
+    func editMoney(_ entry: MoneyEntry, amount: Double, isIn: Bool, category: String, note: String) async {
+        guard entry.id > 0, amount > 0 else { return }
+        if let at = extra.money.entries.firstIndex(where: { $0.id == entry.id }) {
+            extra.money.entries[at].amount = amount
+            extra.money.entries[at].kind = isIn ? "in" : "out"
+            extra.money.entries[at].category = category
+            extra.money.entries[at].note = note
+        }
+        await runMoney(["api": "moneyedit", "id": String(entry.id), "amount": String(amount),
+                        "kind": isIn ? "in" : "out", "category": category, "note": note,
+                        "show": moneyShowing])
+    }
+
+    /// What the month began with. An empty answer lets it carry on from last month.
+    func setOpening(_ amount: String, month: String) async {
+        await runMoney(["api": "moneyopen", "amount": amount, "month": month, "show": moneyShowing])
+    }
+
+    func showMoney(month: String) async {
+        await runMoney(["api": "moneymonth", "show": month])
+    }
+
+    private func runMoney(_ params: [String: String]) async {
+        issued += 1
+        let mine = issued
+        beginWork(quiet: false)
+        defer { endWork() }
+        do {
+            let (fresh, month) = try await api.money(params)
+            if mine == issued {
+                state = fresh
+                if let month { extra.money = month }
+            }
+            lastSync = Date()
+            errorText = nil
+            replanAlerts()
+        } catch TrackerAPI.Failure.waiting {
+            waiting = true
+        } catch TrackerAPI.Failure.signedOut {
+            signOut()
+        } catch {
+            errorText = error.localizedDescription
+        }
     }
 
     // MARK: - Journeys
@@ -594,6 +730,7 @@ final class Store {
             snap.journeyDue = journey.dueToday
         }
         Shared.save(snap)
+        Cache.save(state: state, extra: extra, email: email, calendar: calendarLink)
         #if os(iOS)
         Widgets.nudge()
         #endif

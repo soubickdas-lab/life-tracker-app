@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "3.5",
-      "versionDate": "2026-10-02T00:00:00Z",
-      "versionDescription": "Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date.",
+      "version": "3.6",
+      "versionDate": "2026-10-03T00:00:00Z",
+      "versionDescription": "Money tracker with a live balance and a starting balance for each month, an assistant you can talk to, the app opens instantly from its last known day, and a tidier look throughout.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1137910,
+      "size": 1327099,
       "versions": [
         {
-          "version": "3.5",
-          "buildVersion": "27",
-          "date": "2026-10-02",
-          "localizedDescription": "Home and lock screen widgets, a Mac menu bar with today in it, and a journey you can start on a future date.",
+          "version": "3.6",
+          "buildVersion": "28",
+          "date": "2026-10-03",
+          "localizedDescription": "Money tracker with a live balance and a starting balance for each month, an assistant you can talk to, the app opens instantly from its last known day, and a tidier look throughout.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1137910,
+          "size": 1327099,
           "minOSVersion": "18.0"
         }
       ]
