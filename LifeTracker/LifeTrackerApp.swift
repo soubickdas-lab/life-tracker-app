@@ -53,6 +53,7 @@ struct RootView: View {
     @State private var copied = false
     #if os(iOS)
     @AppStorage("phoneTab") private var phoneTab = 0   /* reopen where you left off */
+    @State private var morePath: [Pane] = []
     #endif
 
     var body: some View {
@@ -252,6 +253,11 @@ struct RootView: View {
                 .tabItem { Label("More", systemImage: "square.grid.2x2") }
                 .tag(4)
         }
+        .onChange(of: store.jump) { _, page in
+            guard let page else { return }
+            store.jump = nil
+            go(to: page)
+        }
         #else
         NavigationSplitView {
             List(panes, selection: Binding<Pane?>(
@@ -306,9 +312,24 @@ struct RootView: View {
         }
     }
 
+    /// A page with its own tab gets that tab; everything else opens under More.
+    private func go(to page: Pane) {
+        let hasJourney = !store.state.journeys.isEmpty
+        switch page {
+        case .today:                      phoneTab = 0
+        case .tomorrow:                   phoneTab = 1
+        case .journey where hasJourney:   phoneTab = 2
+        case .longTerm where !hasJourney: phoneTab = 2
+        case .money:                      phoneTab = 3
+        default:
+            morePath = [page]
+            phoneTab = 4
+        }
+    }
+
     /// The rest of the sheet, so nothing on the phone is out of reach.
     private var moreTab: some View {
-        NavigationStack {
+        NavigationStack(path: $morePath) {
             List {
                 Section("Days") {
                     pageLink(.yesterday)
@@ -328,6 +349,11 @@ struct RootView: View {
             }
             .navigationTitle("More")
             .toolbar { settingsButton }
+            .navigationDestination(for: Pane.self) { pane in
+                paneScreen(pane)
+                    .navigationTitle(pane.title)
+                    .navigationBarTitleDisplayMode(.inline)
+            }
         }
     }
 
@@ -337,11 +363,7 @@ struct RootView: View {
     }
 
     private func pageLink(_ pane: Pane) -> some View {
-        NavigationLink {
-            paneScreen(pane)
-                .navigationTitle(pane.title)
-                .navigationBarTitleDisplayMode(.inline)
-        } label: {
+        NavigationLink(value: pane) {
             Label(pane.title, systemImage: pane.icon)
         }
     }

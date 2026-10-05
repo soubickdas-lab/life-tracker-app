@@ -274,8 +274,27 @@ struct Goal: Codable, Identifiable, Sendable, Equatable {
     var status: String
     var pct: Int
     var notes: String
+    var images: [Int] = []
 
     var id: Int { row }
+
+    init(row: Int, goal: String, why: String = "", target: String = "", status: String = "Idea",
+         pct: Int = 0, notes: String = "", images: [Int] = []) {
+        self.row = row; self.goal = goal; self.why = why; self.target = target
+        self.status = status; self.pct = pct; self.notes = notes; self.images = images
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        row = (try? c.decode(Int.self, forKey: .row)) ?? 0
+        goal = (try? c.decode(String.self, forKey: .goal)) ?? ""
+        why = (try? c.decode(String.self, forKey: .why)) ?? ""
+        target = (try? c.decode(String.self, forKey: .target)) ?? ""
+        status = (try? c.decode(String.self, forKey: .status)) ?? ""
+        pct = (try? c.decode(Int.self, forKey: .pct)) ?? 0
+        notes = (try? c.decode(String.self, forKey: .notes)) ?? ""
+        images = (try? c.decode([Int].self, forKey: .images)) ?? []
+    }
 }
 
 struct BodyRow: Codable, Identifiable, Sendable, Equatable {

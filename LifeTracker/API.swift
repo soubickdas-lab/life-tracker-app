@@ -90,6 +90,13 @@ struct TrackerAPI: Sendable {
         try await send(["api": "delete", "id": id, "light": "1"])
     }
 
+    /// Takes a task off the day and files it under Long Term. The answer carries the
+    /// other tabs too, so the plan is already in its list when you go to look.
+    func toLongTerm(_ id: String) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "tolong", "id": id])
+        return (r.0, r.2)
+    }
+
     func rename(_ id: String, to text: String) async throws -> TrackerState {
         try await send(["api": "rename", "id": id, "text": text, "light": "1"])
     }
@@ -301,6 +308,69 @@ struct TrackerAPI: Sendable {
         return (r.0, r.1)
     }
 
+    // MARK: - Pictures kept with a plan
+
+    private func planPictureURL(_ items: [URLQueryItem]) throws -> URL {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
+        parts.queryItems = [URLQueryItem(name: "api", value: "goalimg")] + items
+        guard let url = parts.url else { throw Failure.badURL }
+        return url
+    }
+
+    /// Files a picture under a Long Term plan. The answer carries the plans back
+    /// with it, so the new picture is in its strip straight away.
+    func addPlanPicture(_ bytes: Data, row: Int) async throws -> (TrackerState, SheetExtra?, Int?) {
+        var request = URLRequest(url: try planPictureURL([URLQueryItem(name: "row", value: String(row))]))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "content-type")
+        request.httpBody = bytes
+        let data = try await URLSession.shared.data(for: request).0
+        let reply = try JSONDecoder().decode(PictureReply.self, from: data)
+        guard reply.ok, let state = reply.state else {
+            throw Failure.server(reply.error ?? "That picture did not go through.")
+        }
+        return (state, reply.extra, reply.id)
+    }
+
+    /// The small copy the strip shows.
+    func addPlanThumb(_ bytes: Data, id: Int) async {
+        guard let url = try? planPictureURL([URLQueryItem(name: "id", value: String(id)),
+                                             URLQueryItem(name: "thumb", value: "1")]) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        request.setValue("image/jpeg", forHTTPHeaderField: "content-type")
+        request.httpBody = bytes
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    func planPicture(id: Int, thumb: Bool) async throws -> Data {
+        var items = [URLQueryItem(name: "id", value: String(id))]
+        if thumb { items.append(URLQueryItem(name: "thumb", value: "1")) }
+        var request = URLRequest(url: try planPictureURL(items))
+        request.timeoutInterval = 60
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw Failure.server("That picture is not there.") }
+        return data
+    }
+
+    func dropPlanPicture(id: Int) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "goalimgdel", "id": String(id)])
+        return (r.0, r.2)
+    }
+
+    private struct PictureReply: Decodable {
+        var ok: Bool
+        var error: String?
+        var id: Int?
+        var state: TrackerState?
+        var extra: SheetExtra?
+    }
+
     // MARK: - Assistant
 
     struct Answer: Decodable, Sendable {
@@ -309,13 +379,15 @@ struct TrackerAPI: Sendable {
         var error: String?
         var setup: Bool?
         var heard: String?            /* what a voice note was understood to say */
+        var extra: SheetExtra?        /* comes back when a plan gained a picture */
         var state: TrackerState?
         var money: MoneyMonth?
     }
 
     /// Says something to the assistant. It may change things on the way to its
     /// answer, so the day it hands back replaces the one on screen.
-    func ask(_ message: String, history: [[String: String]], voice: Data? = nil) async throws -> Answer {
+    func ask(_ message: String, history: [[String: String]], voice: Data? = nil,
+             picture: Data? = nil) async throws -> Answer {
         guard isConfigured else { throw Failure.notConfigured }
         guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
         parts.queryItems = [URLQueryItem(name: "api", value: "ask")]
@@ -330,6 +402,10 @@ struct TrackerAPI: Sendable {
         if let voice {
             body["audio"] = voice.base64EncodedString()
             body["mime"] = "audio/wav"
+        }
+        if let picture {
+            body["image"] = picture.base64EncodedString()
+            body["imageMime"] = "image/jpeg"
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

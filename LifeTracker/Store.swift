@@ -13,6 +13,17 @@ final class Store {
     var pane: Pane = Pane(rawValue: UserDefaults.standard.string(forKey: "macPane") ?? "") ?? .today {
         didSet { UserDefaults.standard.set(pane.rawValue, forKey: "macPane") }
     }
+    /// A page Today asked to open. The Mac shows it in place; the phone picks it up
+    /// and switches tab (or opens it under More).
+    var jump: Pane?
+
+    func open(_ page: Pane) {
+        #if os(macOS)
+        pane = page
+        #else
+        jump = page
+        #endif
+    }
     var loading = false
     var busy = false
     var toast: String?
@@ -210,6 +221,16 @@ final class Store {
         await run(note: "Deleted \(task.task)") { try await client.delete(task.id) }
     }
 
+    /// Not a job for today after all: off the day, onto the Long Term list.
+    func toLongTerm(_ task: TaskItem) async {
+        for day in state.days.indices {
+            state.days[day].tasks.removeAll { $0.id == task.id }   /* gone from the day at once */
+        }
+        extra.scheduled.removeAll { $0.id == task.id }
+        let client = api
+        await runFull(note: "🎯 Moved to Long Term") { try await client.toLongTerm(task.id) }
+    }
+
     func rename(_ task: TaskItem, to text: String) async {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, clean != task.task else { return }
@@ -251,6 +272,37 @@ final class Store {
         await runWithReply { try await client.setOrder(ids) }
     }
 
+    // MARK: - Pictures kept with a plan
+
+    func addPlanPicture(_ raw: Data, to goal: Goal) async {
+        guard let full = Photo.shrink(raw, longSide: 1800) else {
+            errorText = "That file is not a picture."
+            return
+        }
+        beginWork(quiet: false)
+        defer { endWork() }
+        do {
+            let (fresh, more, id) = try await api.addPlanPicture(full, row: goal.row)
+            state = fresh
+            if let more { extra = more }
+            errorText = nil
+            flash("🖼 Saved to " + goal.goal)
+            if let id, let small = Photo.shrink(full, longSide: 320) { await api.addPlanThumb(small, id: id) }
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    func planPicture(id: Int, thumb: Bool) async -> Data? {
+        try? await api.planPicture(id: id, thumb: thumb)
+    }
+
+    func dropPlanPicture(id: Int) async {
+        for at in extra.goals.indices { extra.goals[at].images.removeAll { $0 == id } }
+        let client = api
+        await runFull(note: "🗑 Picture removed") { try await client.dropPlanPicture(id: id) }
+    }
+
     // MARK: - Assistant
 
     struct ChatLine: Identifiable, Equatable {
@@ -258,6 +310,7 @@ final class Store {
         var mine: Bool
         var text: String
         var failed = false
+        var picture: Data?            /* a picture sent along with the words */
     }
 
     var chat: [ChatLine] = []
@@ -265,19 +318,20 @@ final class Store {
 
     /// One thing said to the assistant. Whatever it changed comes back with the
     /// answer, so every screen is already right by the time you read the reply.
-    func ask(_ text: String) async {
+    func ask(_ text: String, picture: Data? = nil) async {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !thinking else { return }
+        guard !clean.isEmpty || picture != nil, !thinking else { return }
 
         let before = chat.filter { !$0.failed }.suffix(12).map {
             ["role": $0.mine ? "user" : "model", "text": $0.text]
         }
-        chat.append(ChatLine(mine: true, text: clean))
+        chat.append(ChatLine(mine: true, text: clean, picture: picture))
         thinking = true
         defer { thinking = false }
 
         do {
-            let answer = try await api.ask(clean, history: Array(before))
+            let answer = try await api.ask(clean, history: Array(before), picture: picture)
+            if let more = answer.extra { extra = more }
             if let fresh = answer.state {
                 issued += 1                         /* anything still in flight is older than this */
                 state = fresh

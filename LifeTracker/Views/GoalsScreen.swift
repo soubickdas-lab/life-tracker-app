@@ -49,6 +49,7 @@ struct GoalsScreen: View {
                                         .labelsHidden()
                                     if !goal.target.isEmpty { Tag(text: goal.target, tint: UI.amber) }
                                 }
+                                PlanPictures(goal: goal)
                             }
                             .padding(.horizontal, 18)
                             .padding(.vertical, 14)

@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "4.0",
-      "versionDate": "2026-10-03T00:00:00Z",
-      "versionDescription": "Voice messages for the assistant: tap the mic, speak in Hinglish or English, send. It now understands mixed speech properly, writes it in normal letters, and can edit or delete anything.",
+      "version": "4.1",
+      "versionDate": "2026-10-05T00:00:00Z",
+      "versionDescription": "Save a task to Long Term from its menu, keep pictures and screenshots with any Long Term plan, and send a picture to the assistant — it can read a bill, file a screenshot, or use it as today's proof photo.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1375998,
+      "size": 1439512,
       "versions": [
         {
-          "version": "4.0",
-          "buildVersion": "32",
-          "date": "2026-10-03",
-          "localizedDescription": "Voice messages for the assistant: tap the mic, speak in Hinglish or English, send. It now understands mixed speech properly, writes it in normal letters, and can edit or delete anything.",
+          "version": "4.1",
+          "buildVersion": "33",
+          "date": "2026-10-05",
+          "localizedDescription": "Save a task to Long Term from its menu, keep pictures and screenshots with any Long Term plan, and send a picture to the assistant — it can read a bill, file a screenshot, or use it as today's proof photo.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1375998,
+          "size": 1439512,
           "minOSVersion": "18.0"
         }
       ]

@@ -8,6 +8,7 @@ struct AssistantScreen: View {
     var onClose: (() -> Void)?
     @State private var draft = ""
     @State private var voice = VoiceNote()
+    @State private var attached: Data?           /* a picture waiting to go with the next message */
     @FocusState private var typing: Bool
 
     /// The starts of the things said most. A tap puts one in the box, ready to finish.
@@ -129,9 +130,18 @@ struct AssistantScreen: View {
     private func bubble(_ line: Store.ChatLine) -> some View {
         HStack {
             if line.mine { Spacer(minLength: 50) }
-            Text(line.text)
-                .font(.system(size: 14))
-                .textSelection(.enabled)
+            VStack(alignment: .trailing, spacing: 6) {
+                if let sent = line.picture, let image = pictureView(sent) {
+                    image.resizable().scaledToFit()
+                        .frame(maxWidth: 200, maxHeight: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                if !line.text.isEmpty {
+                    Text(line.text)
+                        .font(.system(size: 14))
+                        .textSelection(.enabled)
+                }
+            }
                 .padding(.horizontal, 13)
                 .padding(.vertical, 9)
                 .foregroundStyle(line.mine ? .white : (line.failed ? UI.rose : .primary))
@@ -177,6 +187,22 @@ struct AssistantScreen: View {
                 .padding(.horizontal, UI.gutter)
             }
 
+            if let attached, let image = pictureView(attached) {
+                HStack(spacing: 10) {
+                    image.resizable().scaledToFill()
+                        .frame(width: 46, height: 46)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    Text("Picture attached — say what to do with it")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { self.attached = nil } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, UI.gutter)
+            }
+
             if let problem = voice.problem {
                 Text(problem)
                     .font(.system(size: 11)).foregroundStyle(UI.rose)
@@ -206,7 +232,17 @@ struct AssistantScreen: View {
 
     private var typingRow: some View {
         HStack(spacing: 10) {
-            TextField("Type, or tap the mic and speak…", text: $draft, axis: .vertical)
+            PictureButton(onPick: { raw in attached = Photo.shrink(raw, longSide: 1600) }) {
+                Image(systemName: "photo")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(UI.accent)
+                    .frame(width: 34, height: 34)
+                    .background(UI.accent.opacity(0.12), in: Circle())
+                    .contentShape(Circle())
+            }
+            .help("Attach a picture or screenshot")
+
+            TextField(attached == nil ? "Type or speak…" : "What should I do with it?", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...4)
@@ -302,14 +338,16 @@ struct AssistantScreen: View {
     }
 
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.thinking
+        (attached != nil || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && !store.thinking
     }
 
     private func send(_ text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !store.thinking else { return }
+        guard !clean.isEmpty || attached != nil, !store.thinking else { return }
         voice.cancel()
+        let picture = attached
+        attached = nil
         draft = ""
-        Task { await store.ask(clean) }
+        Task { await store.ask(clean, picture: picture) }
     }
 }

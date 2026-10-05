@@ -23,8 +23,14 @@ struct DayScreen: View {
             if let day {
                 header(day)
                 if label == "Today" {
-                    ForEach(store.state.journeys) { JourneyStrip(journey: $0) }
-                    if !store.state.money.isEmpty { MoneyStrip(money: store.state.money) }
+                    ForEach(store.state.journeys) { journey in
+                        Button { store.open(.journey) } label: { JourneyStrip(journey: journey) }
+                            .buttonStyle(.plain)
+                    }
+                    if !store.state.money.isEmpty {
+                        Button { store.open(.money) } label: { MoneyStrip(money: store.state.money) }
+                            .buttonStyle(.plain)
+                    }
                 }
                 tasks(day)
                 if label == "Today" { habits; weight }
@@ -210,6 +216,7 @@ struct DayScreen: View {
                 }
                 Divider()
                 Button("Move to tomorrow") { Task { await store.move(task, to: "tomorrow") } }
+                Button("Save to Long Term") { Task { await store.toLongTerm(task) } }
                 Divider()
                 Button("Delete", role: .destructive) { Task { await store.delete(task) } }
             } label: {
@@ -331,11 +338,25 @@ struct DayScreen: View {
 
     // MARK: - Today extras
 
+    /// A section title that also takes you to that section's own page.
+    private func sectionLink(_ title: String, to page: Pane) -> some View {
+        Button { store.open(page) } label: {
+            HStack(spacing: 4) {
+                Text(title).font(.system(size: 15, weight: .semibold))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var habits: some View {
         Panel {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Habits").font(.system(size: 15, weight: .semibold))
+                    sectionLink("Habits", to: .habits)
                     Spacer()
                     Text("\(store.habitsDone)/\(store.state.habits.count)")
                         .font(.system(size: 13)).foregroundStyle(.secondary)
@@ -377,7 +398,7 @@ struct DayScreen: View {
         Panel {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Weight").font(.system(size: 15, weight: .semibold))
+                    sectionLink("Weight", to: .body)
                     Spacer()
                     if !store.state.weight.isEmpty {
                         Tag(text: "last \(store.state.weight) kg", tint: UI.violet, strong: true)
