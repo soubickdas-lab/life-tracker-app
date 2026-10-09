@@ -47,13 +47,14 @@ struct TaskItem: Codable, Identifiable, Sendable, Equatable {
     var done: Bool
     var repeats: Bool
     var carried: Bool
+    var made: String?              /* when it was written down, for sorting */
     var pending: Bool = false      /* typed here, not written to the sheet yet */
 
     /// "All day" reads better than an empty gap.
     var when: String { slot.isEmpty ? "All day" : slot }
 
     enum CodingKeys: String, CodingKey {
-        case id, task, start, end, slot, done, carried
+        case id, task, start, end, slot, done, carried, made
         case repeats = "repeat"
     }
 

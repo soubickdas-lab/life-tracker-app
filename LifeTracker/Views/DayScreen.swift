@@ -6,6 +6,7 @@ struct DayScreen: View {
     var label: String
 
     @State private var newTask = ""
+    @AppStorage("taskSort") private var sortKey = TaskSort.mine.rawValue
     @State private var newSlot = ""
     @State private var editing: String?
     @State private var draft = ""
@@ -78,21 +79,21 @@ struct DayScreen: View {
     // MARK: - Task list
 
     @ViewBuilder private func tasks(_ day: DayBlock) -> some View {
-        let open = day.tasks.filter { !$0.done || lingering.contains($0.id) }
-        let done = day.tasks.filter { $0.done && !lingering.contains($0.id) }
+        let sort = TaskSort(rawValue: sortKey) ?? .mine
+        let open = sort.apply(day.tasks.filter { !$0.done || lingering.contains($0.id) })
+        let done = sort.apply(day.tasks.filter { $0.done && !lingering.contains($0.id) })
 
         Panel(padding: 0) {
             VStack(spacing: 0) {
-                heading("Upcoming", count: open.count, tint: UI.accent)
+                heading("Upcoming", count: open.count, tint: UI.accent, sort: true)
+                addRow(day)
                 if open.isEmpty {
                     EmptyHint(icon: day.tasks.isEmpty ? "checklist" : "checkmark.seal",
-                              text: day.tasks.isEmpty ? "Nothing on this day yet.\nAdd the first thing below."
+                              text: day.tasks.isEmpty ? "Nothing on this day yet.\nAdd the first thing above."
                                                       : "All clear — everything here is done.")
                 } else {
                     list(open)
                 }
-                RowLine()
-                addRow(day)
             }
         }
 
@@ -107,18 +108,45 @@ struct DayScreen: View {
     }
 
     /// The header on each of the two lists.
-    private func heading(_ title: String, count: Int, tint: Color) -> some View {
-        HStack {
+    private func heading(_ title: String, count: Int, tint: Color, sort: Bool = false) -> some View {
+        HStack(spacing: 8) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
             Spacer()
+            if sort { sortMenu }
             if count > 0 { Tag(text: "\(count)", tint: tint, strong: true) }
         }
         .padding(.horizontal, 16)
         .padding(.top, 13)
         .padding(.bottom, 9)
+    }
+
+    /// How the list is ordered — remembered across days and launches.
+    private var sortMenu: some View {
+        let current = TaskSort(rawValue: sortKey) ?? .mine
+        return Menu {
+            ForEach(TaskSort.allCases) { choice in
+                Button {
+                    sortKey = choice.rawValue
+                } label: {
+                    if choice == current { Label(choice.title, systemImage: "checkmark") }
+                    else { Text(choice.title) }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.up.arrow.down").font(.system(size: 9, weight: .semibold))
+                Text(current.title).font(.system(size: 11, weight: .medium, design: .rounded))
+            }
+            .foregroundStyle(current == .mine ? .secondary : UI.accent)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background((current == .mine ? Color.primary.opacity(0.05) : UI.accent.opacity(0.12)), in: Capsule())
+        }
+        .barelyAMenu()
+        .help("Change the order of the list")
     }
 
     private func list(_ tasks: [TaskItem]) -> some View {
@@ -310,30 +338,42 @@ struct DayScreen: View {
             }
     }
 
+    /// The composer: its own tinted box at the top of the list, so it reads as
+    /// "type here", not as one more row.
     private func addRow(_ day: DayBlock) -> some View {
-        HStack(spacing: 13) {
+        let ready = !newTask.trimmingCharacters(in: .whitespaces).isEmpty
+        return HStack(spacing: 12) {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(UI.accent)
-                .frame(width: 21, height: 21)
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(UI.accent, in: Circle())
 
-            TextField("Add to \(day.label.lowercased())…", text: $newTask)
+            TextField("What needs doing \(day.label == "Today" ? "today" : day.label.lowercased())?", text: $newTask)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14))
+                .font(.system(size: 15))
                 .onSubmit { add(day) }
 
             SlotPicker(slot: $newSlot, dayIsToday: day.label == "Today")
 
             Button { add(day) } label: {
-                Image(systemName: "return")
-                    .font(.system(size: 11, weight: .semibold))
+                Text("Add")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(ready ? UI.accent : UI.accent.opacity(0.14), in: Capsule())
+                    .foregroundStyle(ready ? .white : UI.accent)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(newTask.isEmpty ? .secondary : UI.accent)
-            .disabled(newTask.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(!ready)
+            .animation(.snappy(duration: 0.15), value: ready)
         }
-        .padding(.horizontal, 16)
-        .frame(height: UI.rowHeight)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(UI.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(UI.accent.opacity(0.18), lineWidth: 1))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Today extras
@@ -494,6 +534,34 @@ struct DayScreen: View {
         let name = newTask, slot = newSlot
         newTask = ""; newSlot = ""
         Task { await store.add(name, slot: slot, to: day) }
+    }
+}
+
+/// The orders a day's list can be shown in. "My order" is the sheet's own,
+/// which is what dragging rows changes.
+enum TaskSort: String, CaseIterable, Identifiable {
+    case mine, newest, oldest, time, name
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mine:   return "My order"
+        case .newest: return "Newest first"
+        case .oldest: return "Oldest first"
+        case .time:   return "By time"
+        case .name:   return "A to Z"
+        }
+    }
+
+    func apply(_ tasks: [TaskItem]) -> [TaskItem] {
+        switch self {
+        case .mine:   return tasks
+        case .newest: return tasks.sorted { ($0.made ?? "") > ($1.made ?? "") }
+        case .oldest: return tasks.sorted { ($0.made ?? "") < ($1.made ?? "") }
+        case .time:   return tasks.sorted { ($0.start.isEmpty ? "99:99" : $0.start) < ($1.start.isEmpty ? "99:99" : $1.start) }
+        case .name:   return tasks.sorted { $0.task.localizedCaseInsensitiveCompare($1.task) == .orderedAscending }
+        }
     }
 }
 

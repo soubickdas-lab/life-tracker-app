@@ -28,6 +28,7 @@ final class Store {
     var busy = false
     var toast: String?
     var errorText: String?
+    @ObservationIgnored private var misses = 0      /* background checks that failed in a row */
     var lastSync: Date?
 
     /// Who this device is signed in as. Kept so the app opens straight into the day.
@@ -554,9 +555,9 @@ final class Store {
         guard !clean.isEmpty else { return }
 
         if let index = state.days.firstIndex(where: { $0.date == day.date }) {
-            state.days[index].tasks.append(
+            state.days[index].tasks.insert(
                 TaskItem(id: "pending-" + UUID().uuidString, task: clean,
-                         slot: slot.trimmingCharacters(in: .whitespaces), pending: true))
+                         slot: slot.trimmingCharacters(in: .whitespaces), pending: true), at: 0)
         }
 
         var line = clean
@@ -743,6 +744,7 @@ final class Store {
             if let more { extra = more }        /* a light reply leaves the other tabs alone */
             lastSync = Date()
             errorText = nil
+            misses = 0
             replanAlerts()
             if let note { flash(note) }
         } catch TrackerAPI.Failure.waiting {
@@ -750,7 +752,10 @@ final class Store {
         } catch TrackerAPI.Failure.signedOut {
             signOut()
         } catch {
-            errorText = error.localizedDescription
+            /* a background check that fails once is not news while the day is on screen —
+               the next check is seconds away; say so only when it keeps failing */
+            misses += 1
+            if !quiet || state.days.isEmpty || misses >= 3 { errorText = error.localizedDescription }
         }
     }
 

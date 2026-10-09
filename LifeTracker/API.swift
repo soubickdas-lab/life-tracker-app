@@ -18,6 +18,7 @@ struct TrackerAPI: Sendable {
         case signedOut
         case waiting
         case server(String)
+        case unreadable(Int)
 
         var errorDescription: String? {
             switch self {
@@ -26,6 +27,9 @@ struct TrackerAPI: Sendable {
             case .signedOut:     return "Signed out — sign in again."
             case .waiting:       return "Your account is waiting to be let in."
             case .server(let m): return m
+            case .unreadable(let code):
+                return "The server did not answer properly" + (code == 0 || code == 200 ? "" : " (\(code))")
+                    + " — trying again."
             }
         }
     }
@@ -445,14 +449,18 @@ struct TrackerAPI: Sendable {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
 
-        /* One quiet retry: a dropped connection should not become a red banner. */
-        var reply: APIReply
-        do {
-            reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
-        } catch is DecodingError {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            reply = try JSONDecoder().decode(APIReply.self, from: try await URLSession.shared.data(for: request).0)
+        /* A reply that is not ours (an error page from the network, half a body) is asked
+           for again rather than shown: a read twice, a change once so it cannot land twice. */
+        let reading = ["full", "state", "moneymonth"].contains(params["api"] ?? "")
+        var status = 0
+        var answer: APIReply?
+        for attempt in 0...(reading ? 2 : 1) {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000) }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if let read = try? JSONDecoder().decode(APIReply.self, from: data) { answer = read; break }
         }
+        guard let reply = answer else { throw Failure.unreadable(status) }
         if reply.pending == true { throw Failure.waiting }
         guard reply.ok else {
             throw Failure.server(reply.error ?? "The server said no.")
