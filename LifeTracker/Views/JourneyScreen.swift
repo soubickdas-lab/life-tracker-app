@@ -34,6 +34,7 @@ struct JourneyScreen: View {
                 ForEach(journeys) { journey in
                     countdown(journey)
                     if journey.hasTarget { target(journey) }
+                    fuel(journey)
                     habits(journey)
                     shelf(journey)
                     record(journey)
@@ -126,6 +127,53 @@ struct JourneyScreen: View {
                     .padding(.top, 6)
             }
         }
+    }
+
+    // MARK: - What went in
+
+    @State private var kcalDraft = ""
+
+    private func fuel(_ journey: Journey) -> some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    heading("Calories")
+                    Spacer()
+                    if let goal = journey.caloriesGoal {
+                        Tag(text: "under \(goal)", tint: UI.amber)
+                    }
+                }
+                HStack(spacing: 10) {
+                    TextField("today's total", text: $kcalDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13))
+                        .frame(width: 120)
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        #endif
+                        .onSubmit { feed() }
+                    Text("kcal").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Button("Save") { feed() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(UI.amber)
+                        .disabled(Int(kcalDraft.trimmingCharacters(in: .whitespaces)) == nil)
+                    Spacer()
+                    if !store.state.calories.isEmpty {
+                        Text("today \(store.state.calories)")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(UI.amber)
+                    }
+                }
+                CalorieBars(days: journey.calories, goal: journey.caloriesGoal)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private func feed() {
+        let clean = kcalDraft.trimmingCharacters(in: .whitespaces)
+        guard Int(clean) != nil else { return }
+        kcalDraft = ""
+        Task { await store.logCalories(clean) }
     }
 
     // MARK: - The habits that get you there
@@ -446,6 +494,62 @@ struct JourneyStrip: View {
                     }
                 }
                 Spacer(minLength: 0)
+            }
+        }
+    }
+}
+
+/// Calories eaten, one bar a day, the goal ruled across. A day over the line is warm.
+struct CalorieBars: View {
+    var days: [CalorieDay]
+    var goal: Int?
+
+    private var points: [(day: String, kcal: Double)] {
+        Array(days.compactMap { d in d.value.map { (d.day, $0) } }.suffix(21))
+    }
+
+    var body: some View {
+        let shown = points
+        if shown.isEmpty {
+            Text("Log today's calories and the bars start here.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        } else {
+            let top = max(Double(goal ?? 0), shown.map(\.kcal).max() ?? 1) * 1.12
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { geo in
+                    let height = geo.size.height
+                    let slot = geo.size.width / CGFloat(shown.count)
+                    let bar = max(6, slot * 0.6)
+                    ZStack(alignment: .bottomLeading) {
+                        HStack(alignment: .bottom, spacing: 0) {
+                            ForEach(Array(shown.enumerated()), id: \.offset) { _, p in
+                                let over = goal.map { p.kcal > Double($0) } ?? false
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill((over ? UI.rose : UI.mint).opacity(0.85))
+                                    .frame(width: bar, height: max(2, CGFloat(p.kcal / top) * height))
+                                    .frame(width: slot)
+                            }
+                        }
+                        if let goal {
+                            Path { path in
+                                let y = height - CGFloat(Double(goal) / top) * height
+                                path.move(to: CGPoint(x: 0, y: y))
+                                path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                            }
+                            .stroke(UI.amber, style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        }
+                    }
+                }
+                .frame(height: 96)
+                HStack {
+                    Text(String(shown.first!.day.suffix(5))).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
+                    Spacer()
+                    if let last = shown.last {
+                        Text("\(Int(last.kcal)) kcal on \(String(last.day.suffix(5)))"
+                             + (goal.map { last.kcal > Double($0) ? " · \(Int(last.kcal) - $0) over" : " · \($0 - Int(last.kcal)) under" } ?? ""))
+                            .font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                    }
+                }
             }
         }
     }

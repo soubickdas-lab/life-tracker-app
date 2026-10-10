@@ -44,7 +44,9 @@ struct Feed: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
         Task {
-            let fresh = await Live.fetch() ?? Shared.load() ?? sample
+            let kept = Shared.load()
+            let recent = kept.map { Date.now.timeIntervalSince($0.at) < 180 } ?? false
+            let fresh = recent ? kept! : (await Live.fetch() ?? kept ?? sample)
             /* often enough to stay honest, rarely enough that iOS keeps serving it */
             let again = Calendar.current.date(byAdding: .minute, value: 20, to: .now) ?? .now
             completion(Timeline(entries: [Entry(date: .now, snap: fresh)], policy: .after(again)))

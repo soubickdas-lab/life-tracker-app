@@ -7,7 +7,7 @@ enum Cache {
     private static let folder = "LifeTracker"
     private static let file = "day.json"
 
-    private struct Box: Codable {
+    struct Box: Codable {
         var state: TrackerState
         var extra: SheetExtra
         var at: Date

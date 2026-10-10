@@ -6,6 +6,7 @@ struct TrackerState: Codable, Sendable {
     var days: [DayBlock] = []
     var habits: [Habit] = []
     var weight: String = ""
+    var calories: String = ""        /* logged today */
     var journeys: [Journey] = []
     var money = MoneySummary()
     var notes: [Note] = []
@@ -20,6 +21,7 @@ struct TrackerState: Codable, Sendable {
         days = (try? c.decode([DayBlock].self, forKey: .days)) ?? []
         habits = (try? c.decode([Habit].self, forKey: .habits)) ?? []
         weight = (try? c.decode(String.self, forKey: .weight)) ?? ""
+        calories = (try? c.decode(String.self, forKey: .calories)) ?? ""
         journeys = (try? c.decode([Journey].self, forKey: .journeys)) ?? []
         money = (try? c.decode(MoneySummary.self, forKey: .money)) ?? MoneySummary()
         notes = (try? c.decode([Note].self, forKey: .notes)) ?? []
@@ -48,13 +50,13 @@ struct TaskItem: Codable, Identifiable, Sendable, Equatable {
     var repeats: Bool
     var carried: Bool
     var made: String?              /* when it was written down, for sorting */
+    var alarm: Bool?               /* rings at its time */
     var pending: Bool = false      /* typed here, not written to the sheet yet */
 
-    /// "All day" reads better than an empty gap.
-    var when: String { slot.isEmpty ? "All day" : slot }
+    var rings: Bool { alarm == true && !slot.isEmpty }
 
     enum CodingKeys: String, CodingKey {
-        case id, task, start, end, slot, done, carried, made
+        case id, task, start, end, slot, done, carried, made, alarm
         case repeats = "repeat"
     }
 
@@ -102,6 +104,8 @@ struct Journey: Codable, Identifiable, Sendable, Equatable {
     var photos: Int = 0
     var startsIn: Int = 0            /* days until it begins; 0 once it is running */
     var weights: [WeighIn] = []
+    var calories: [CalorieDay] = []
+    var caloriesGoal: Int?
 
     /// Where you are in it — or how long until it begins.
     var pace: String {
@@ -144,6 +148,24 @@ struct Journey: Codable, Identifiable, Sendable, Equatable {
         photos = (try? c.decode(Int.self, forKey: .photos)) ?? 0
         startsIn = (try? c.decode(Int.self, forKey: .startsIn)) ?? 0
         weights = (try? c.decode([WeighIn].self, forKey: .weights)) ?? []
+        calories = (try? c.decode([CalorieDay].self, forKey: .calories)) ?? []
+        caloriesGoal = try? c.decode(Int.self, forKey: .caloriesGoal)
+    }
+}
+
+/// What went in on one day.
+struct CalorieDay: Codable, Identifiable, Sendable, Equatable {
+    var day: String
+    var kcal: String
+
+    var id: String { day }
+    var value: Double? { Double(kcal) }
+
+    init(day: String, kcal: String) { self.day = day; self.kcal = kcal }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        day = (try? c.decode(String.self, forKey: .day)) ?? ""
+        kcal = (try? c.decode(String.self, forKey: .kcal)) ?? ""
     }
 }
 
@@ -307,6 +329,7 @@ struct BodyRow: Codable, Identifiable, Sendable, Equatable {
     var arm: String
     var fat: String
     var notes: String
+    var kcal: String?
 
     var id: String { date }
 }

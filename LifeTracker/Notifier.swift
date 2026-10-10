@@ -73,6 +73,18 @@ enum Notifier {
             centre.removePendingNotificationRequests(withIdentifiers: mine)
 
             let now = Date()
+
+            /* alarms are laid out a day ahead, so one set for the morning rings even
+               if the app was not opened first */
+            let tomorrow = state.days.first { $0.label == "Tomorrow" }
+            for block in [today, tomorrow].compactMap({ $0 }) {
+                for task in block.tasks where task.rings && !task.done && !task.pending {
+                    guard let start = moment(day: block.date, time: task.start), start > now else { continue }
+                    add(centre, id: prefix + task.id + "-alarm", title: "⏰ " + task.task,
+                        body: task.slot, at: start, loud: true)
+                }
+            }
+
             for task in today.tasks where !task.done && !task.pending {
                 guard let start = moment(day: today.date, time: task.start) else { continue }
 
@@ -86,8 +98,8 @@ enum Notifier {
                     }
                 }
 
-                /* and the one at the time itself */
-                if start > now {
+                /* and the one at the time itself — unless the alarm already covers it */
+                if start > now && !task.rings {
                     add(centre, id: prefix + task.id + "-now", title: task.task,
                         body: task.slot.isEmpty ? "Starting now" : "Starting now · \(task.slot)",
                         at: start)
@@ -151,11 +163,18 @@ enum Notifier {
 
     /// One alert, at one moment.
     private static func add(_ centre: UNUserNotificationCenter,
-                            id: String, title: String, body: String, at when: Date) {
+                            id: String, title: String, body: String, at when: Date, loud: Bool = false) {
         let note = UNMutableNotificationContent()
         note.title = title
         note.body = body
         note.sound = .default
+        if loud {
+            /* an alarm: the long ringtone on the phone, and it cuts through Focus */
+            #if os(iOS)
+            note.sound = .defaultRingtone
+            #endif
+            note.interruptionLevel = .timeSensitive
+        }
 
         let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: when)
         centre.add(UNNotificationRequest(

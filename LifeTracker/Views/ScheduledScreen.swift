@@ -35,8 +35,7 @@ struct ScheduledScreen: View {
                                     Text(item.pretty).font(.system(size: 11)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Tag(text: item.slot.isEmpty ? "All day" : item.slot,
-                                    tint: item.slot.isEmpty ? .secondary : UI.sky, strong: !item.slot.isEmpty)
+                                if !item.slot.isEmpty { Tag(text: item.slot, tint: UI.sky, strong: true) }
                                 Button {
                                     Task { await store.delete(TaskItem(id: item.id, task: item.task, slot: item.slot)) }
                                 } label: {

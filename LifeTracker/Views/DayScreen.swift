@@ -6,6 +6,7 @@ struct DayScreen: View {
     var label: String
 
     @State private var newTask = ""
+    @State private var kcal = ""
     @AppStorage("taskSort") private var sortKey = TaskSort.mine.rawValue
     @State private var newSlot = ""
     @State private var editing: String?
@@ -92,7 +93,12 @@ struct DayScreen: View {
                               text: day.tasks.isEmpty ? "Nothing on this day yet.\nAdd the first thing above."
                                                       : "All clear — everything here is done.")
                 } else {
-                    list(open)
+                    /* the ones with a time, then a line, then the loose ones */
+                    let timed = open.filter { !$0.start.isEmpty }
+                    let loose = open.filter { $0.start.isEmpty }
+                    if !timed.isEmpty { list(timed) }
+                    if !timed.isEmpty && !loose.isEmpty { divider("No time set", count: loose.count) }
+                    if !loose.isEmpty { list(loose) }
                 }
             }
         }
@@ -147,6 +153,24 @@ struct DayScreen: View {
         }
         .barelyAMenu()
         .help("Change the order of the list")
+    }
+
+    /// The line between the timed tasks and the loose ones.
+    private func divider(_ title: String, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.7)
+                .foregroundStyle(.tertiary)
+            Text("\(count)")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Rectangle().fill(UI.hairline).frame(height: 1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
+        .background(Color.primary.opacity(0.02))
     }
 
     private func list(_ tasks: [TaskItem]) -> some View {
@@ -236,8 +260,16 @@ struct DayScreen: View {
                 Button(task.done ? "Mark as not done" : "Mark as done") { tick(task) }
                 Button("Rename…") { draft = task.task; editing = task.id }
                 Button("Change time…") { clockDraft = task.slot; clockEdit = task.id }
-                Button(task.slot.isEmpty ? "Keep all day" : "Clear the time") {
-                    Task { await store.setTime(task, "") }
+                if !task.slot.isEmpty {
+                    Button("Clear the time") { Task { await store.setTime(task, "") } }
+                }
+                Divider()
+                if task.slot.isEmpty {
+                    Button("Alarm needs a time") {}.disabled(true)
+                } else {
+                    Button(task.alarm == true ? "Alarm off" : "Alarm on — ring at \(task.slot.components(separatedBy: " - ").first ?? task.slot)") {
+                        Task { await store.setAlarm(task, task.alarm != true) }
+                    }
                 }
                 Button(task.repeats ? "Stop repeating" : "Repeat every day") {
                     Task { await store.setRepeat(task, !task.repeats) }
@@ -317,13 +349,29 @@ struct DayScreen: View {
                 clockDraft = task.slot
                 clockEdit = task.id
             } label: {
-                Tag(text: task.when,
-                    tint: task.slot.isEmpty ? .secondary : (task.repeats ? UI.violet : UI.sky),
-                    strong: !task.slot.isEmpty)
+                if task.slot.isEmpty {
+                    Image(systemName: "clock")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.secondary.opacity(0.5))
+                        .frame(width: 25, height: 25)
+                        .background(Color.primary.opacity(0.05), in: Circle())
+                } else {
+                    HStack(spacing: 4) {
+                        if task.rings {
+                            Image(systemName: "bell.fill").font(.system(size: 9, weight: .bold))
+                        }
+                        Text(task.slot)
+                    }
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(task.rings ? UI.amber : (task.repeats ? UI.violet : UI.sky))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background((task.rings ? UI.amber : (task.repeats ? UI.violet : UI.sky)).opacity(0.14), in: Capsule())
                     .fixedSize()
+                }
             }
             .buttonStyle(.plain)
-            .help("Tap to change the time")
+            .help(task.slot.isEmpty ? "Give this a time" : "Tap to change the time")
         }
     }
 
@@ -438,8 +486,11 @@ struct DayScreen: View {
         Panel {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    sectionLink("Weight", to: .body)
+                    sectionLink("Weight & calories", to: .body)
                     Spacer()
+                    if !store.state.calories.isEmpty {
+                        Tag(text: "\(store.state.calories) kcal today", tint: UI.amber, strong: true)
+                    }
                     if !store.state.weight.isEmpty {
                         Tag(text: "last \(store.state.weight) kg", tint: UI.violet, strong: true)
                     }
@@ -454,13 +505,36 @@ struct DayScreen: View {
                         #endif
                         .onSubmit { saveWeight() }
                     Text("kg").font(.system(size: 12)).foregroundStyle(.secondary)
-                    Button("Save today") { saveWeight() }
+                    Button("Save") { saveWeight() }
                         .buttonStyle(.borderedProminent)
                         .disabled(Double(kg.trimmingCharacters(in: .whitespaces)) == nil)
                     Spacer()
                 }
+                HStack(spacing: 10) {
+                    TextField("1800", text: $kcal)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13))
+                        .frame(width: 110)
+                        #if os(iOS)
+                        .keyboardType(.numberPad)
+                        #endif
+                        .onSubmit { saveCalories() }
+                    Text("kcal").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Button("Save") { saveCalories() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(UI.amber)
+                        .disabled(Int(kcal.trimmingCharacters(in: .whitespaces)) == nil)
+                    Spacer()
+                }
             }
         }
+    }
+
+    private func saveCalories() {
+        let clean = kcal.trimmingCharacters(in: .whitespaces)
+        guard Int(clean) != nil else { return }
+        kcal = ""
+        Task { await store.logCalories(clean) }
     }
 
     private func saveWeight() {
@@ -554,13 +628,16 @@ enum TaskSort: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Whatever the order, the tasks with a time stay on top, in time order;
+    /// the chosen order arranges the loose ones under them.
     func apply(_ tasks: [TaskItem]) -> [TaskItem] {
+        let timed = tasks.filter { !$0.start.isEmpty }.sorted { $0.start < $1.start }
+        let loose = tasks.filter { $0.start.isEmpty }
         switch self {
-        case .mine:   return tasks
-        case .newest: return tasks.sorted { ($0.made ?? "") > ($1.made ?? "") }
-        case .oldest: return tasks.sorted { ($0.made ?? "") < ($1.made ?? "") }
-        case .time:   return tasks.sorted { ($0.start.isEmpty ? "99:99" : $0.start) < ($1.start.isEmpty ? "99:99" : $1.start) }
-        case .name:   return tasks.sorted { $0.task.localizedCaseInsensitiveCompare($1.task) == .orderedAscending }
+        case .mine, .time: return timed + loose
+        case .newest: return timed + loose.sorted { ($0.made ?? "") > ($1.made ?? "") }
+        case .oldest: return timed + loose.sorted { ($0.made ?? "") < ($1.made ?? "") }
+        case .name:   return timed + loose.sorted { $0.task.localizedCaseInsensitiveCompare($1.task) == .orderedAscending }
         }
     }
 }

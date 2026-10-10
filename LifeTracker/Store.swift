@@ -53,6 +53,8 @@ final class Store {
     /// Runs while the app is in front, so a change made on the phone shows up here
     /// without anyone pressing anything.
     private var poller: Task<Void, Never>?
+    @ObservationIgnored private var planned = ""        /* what the alerts and widget last saw */
+    @ObservationIgnored private var cached = Data()     /* what is on disk already */
 
     /// A tick is on screen before the server hears about it, so there is nothing to
     /// wait for. "Updating…" only appears if a call is slow enough to be worth saying.
@@ -156,8 +158,13 @@ final class Store {
         poller?.cancel()
         poller = Task { [weak self] in
             while !Task.isCancelled {
-                /* often enough that a tick on the phone shows up here while you look */
+                /* often enough that a tick on the other device shows up while you look;
+                   the phone checks less often — every check costs radio and battery */
+                #if os(iOS)
+                try? await Task.sleep(for: .seconds(60))
+                #else
                 try? await Task.sleep(for: .seconds(25))
+                #endif
                 guard !Task.isCancelled, let self, self.isConfigured, !self.busy, !self.loading else { continue }
                 await self.refresh(quietly: true)
             }
@@ -604,12 +611,37 @@ final class Store {
         await run(note: "⚖️ \(kg) kg") { try await client.logWeight(kg) }
     }
 
+    func logCalories(_ kcal: String) async {
+        state.calories = kcal
+        let today = Self.stamp.string(from: Date())
+        if let row = extra.body.firstIndex(where: { $0.date == today }) {
+            extra.body[row].kcal = kcal
+        }
+        for j in state.journeys.indices {
+            state.journeys[j].calories.removeAll { $0.day == today }
+            state.journeys[j].calories.append(CalorieDay(day: today, kcal: kcal))
+        }
+        let client = api
+        await run(note: "🍽 \(kcal) kcal") { try await client.logCalories(kcal) }
+    }
+
     func addNote(_ text: String) async {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
         state.notes.insert(Note(when: "just now", text: clean), at: 0)
         let client = api
         await run(note: "🗒 Noted") { try await client.addNote(clean) }
+    }
+
+    /// The phone rings at the task's time. Needs a time, so the server may say no.
+    func setAlarm(_ task: TaskItem, _ on: Bool) async {
+        for day in state.days.indices {
+            if let row = state.days[day].tasks.firstIndex(where: { $0.id == task.id }) {
+                state.days[day].tasks[row].alarm = on
+            }
+        }
+        let client = api
+        await runWithReply { try await client.setAlarm(task.id, on) }
     }
 
     func setRepeat(_ task: TaskItem, _ on: Bool) async {
@@ -794,10 +826,37 @@ final class Store {
     }
 
     /// The task nudges and the two daily bookends, always planned together.
+    /// Only when something they show has changed: rewriting thirty notifications,
+    /// the cache and the widget after every quiet check kept the phone warm.
     private func replanAlerts() {
-        Notifier.reschedule(state, leadMinutes: reminderLead)
-        Notifier.bookends(state, habitsDone: habitsDone, habitsTotal: state.habits.count)
-        leaveSnapshot()
+        let now = fingerprint()
+        if now != planned {
+            planned = now
+            Notifier.reschedule(state, leadMinutes: reminderLead)
+            Notifier.bookends(state, habitsDone: habitsDone, habitsTotal: state.habits.count)
+            leaveSnapshot()
+        }
+        if let data = try? JSONEncoder().encode(Cache.Box(state: state, extra: extra, at: .distantPast,
+                                                          email: email, calendar: calendarLink)),
+           data != cached {
+            cached = data
+            Cache.save(state: state, extra: extra, email: email, calendar: calendarLink)
+        }
+    }
+
+    /// Everything the alerts, the widget and the menu bar can show.
+    private func fingerprint() -> String {
+        var parts: [String] = [state.today, String(reminderLead)]
+        for day in state.days {
+            for t in day.tasks {
+                parts.append("\(day.date)|\(t.id)|\(t.task)|\(t.start)|\(t.slot)|\(t.done)|\(t.alarm == true)")
+            }
+        }
+        for h in state.habits { parts.append("h|\(h.name)|\(h.done)") }
+        if let j = state.journeys.first {
+            parts.append("j|\(j.name)|\(j.daysLeft)|\(j.doneToday)|\(j.dueToday)")
+        }
+        return parts.joined(separator: "\n")
     }
 
     /// A small picture of today, left where the widget can find it.
@@ -819,7 +878,6 @@ final class Store {
             snap.journeyDue = journey.dueToday
         }
         Shared.save(snap)
-        Cache.save(state: state, extra: extra, email: email, calendar: calendarLink)
         #if os(iOS)
         Widgets.nudge()
         #endif

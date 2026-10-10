@@ -247,6 +247,10 @@ struct TrackerAPI: Sendable {
         try await send(["api": "weight", "kg": kg])
     }
 
+    func logCalories(_ kcal: String) async throws -> TrackerState {
+        try await send(["api": "calories", "kcal": kcal])
+    }
+
     func addNote(_ text: String) async throws -> TrackerState {
         try await send(["api": "note", "text": text])
     }
@@ -255,6 +259,10 @@ struct TrackerAPI: Sendable {
     func full() async throws -> (TrackerState, SheetExtra) {
         let reply = try await raw(["api": "full"])
         return (reply.0, reply.2 ?? SheetExtra())
+    }
+
+    func setAlarm(_ id: String, _ on: Bool) async throws -> (TrackerState, String) {
+        try await sendWithReply(["api": "alarm", "id": id, "on": on ? "true" : "false", "light": "1"])
     }
 
     func setRepeat(_ id: String, _ on: Bool) async throws -> (TrackerState, SheetExtra?) {

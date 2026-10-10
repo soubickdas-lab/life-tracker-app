@@ -13,6 +13,12 @@ const pictures = shots && fs.existsSync(shots)
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  /* the door: whoever knocks is signed in and let in */
+  if (url.pathname === '/api/me') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, email: 'mock@example.com', status: 'active', admin: false, calendar: '' }));
+    return;
+  }
 
   if (url.searchParams.get('api') === 'photo' && req.method !== 'POST') {
     if (!pictures.length) { res.writeHead(404).end(); return; }
