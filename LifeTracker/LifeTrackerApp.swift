@@ -9,6 +9,8 @@ import UIKit
 struct LifeTrackerApp: App {
     @State private var store = Store()
 
+    init() { Notifier.wire() }
+
     var body: some Scene {
         WindowGroup(id: "main") {
             RootView()

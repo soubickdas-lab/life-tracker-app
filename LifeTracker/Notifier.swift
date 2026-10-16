@@ -12,6 +12,21 @@ import AppKit
 enum Notifier {
     private static let prefix = "task-"
 
+    /// Without a delegate iOS swallows a notification while the app is in front —
+    /// which is exactly when you are staring at the task waiting for it to ring.
+    static let ringer = Ringer()
+    static func wire() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        UNUserNotificationCenter.current().delegate = ringer
+    }
+
+    final class Ringer: NSObject, UNUserNotificationCenterDelegate {
+        func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                    willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+            [.banner, .list, .sound]
+        }
+    }
+
     /// Asked for once, the first time the app has a day to show — never while the
     /// connect sheet is up, where the alert used to land on top and get dismissed.
     static func askOnce() {
@@ -24,13 +39,13 @@ enum Notifier {
         }
     }
 
-    /// Asked again from Setup, by the button.
+    /// Asked again from Setup, by the button — and whenever an alarm is switched on.
     @discardableResult
     static func ask() async -> UNAuthorizationStatus {
         guard Bundle.main.bundleIdentifier != nil else { return .denied }
         if await state() == .notDetermined {
             _ = try? await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound])
+                .requestAuthorization(options: [.alert, .sound, .badge])
         }
         return await state()
     }
@@ -79,9 +94,14 @@ enum Notifier {
             let tomorrow = state.days.first { $0.label == "Tomorrow" }
             for block in [today, tomorrow].compactMap({ $0 }) {
                 for task in block.tasks where task.rings && !task.done && !task.pending {
-                    guard let start = moment(day: block.date, time: task.start), start > now else { continue }
-                    add(centre, id: prefix + task.id + "-alarm", title: "⏰ " + task.task,
-                        body: task.slot, at: start, loud: true)
+                    guard let start = moment(day: block.date, time: task.start) else { continue }
+                    /* an alarm rings three times a minute apart — a single chime is easy to sleep through */
+                    for ring in 0..<3 {
+                        let at = start.addingTimeInterval(Double(ring) * 60)
+                        guard at > now else { continue }
+                        add(centre, id: prefix + task.id + "-alarm\(ring)", title: "⏰ " + task.task,
+                            body: ring == 0 ? task.slot : "Still on — \(task.slot)", at: at, loud: true)
+                    }
                 }
             }
 

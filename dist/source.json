@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "4.4",
+      "version": "4.5",
       "versionDate": "2026-10-16T00:00:00Z",
-      "versionDescription": "Set a time with scroll wheels — in the add box, on a task's time tag and in Scheduled. Habits lined up by what still needs doing. Checks the server far less often.",
+      "versionDescription": "Alarms ring properly now: three rings a minute apart, shown even while the app is open, and the app asks for notification permission when you switch one on. New time sheet with quick picks, wheels and durations, starting at the current time.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1512356,
+      "size": 1526734,
       "versions": [
         {
-          "version": "4.4",
-          "buildVersion": "36",
+          "version": "4.5",
+          "buildVersion": "37",
           "date": "2026-10-16",
-          "localizedDescription": "Set a time with scroll wheels — in the add box, on a task's time tag and in Scheduled. Habits lined up by what still needs doing. Checks the server far less often.",
+          "localizedDescription": "Alarms ring properly now: three rings a minute apart, shown even while the app is open, and the app asks for notification permission when you switch one on. New time sheet with quick picks, wheels and durations, starting at the current time.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1512356,
+          "size": 1526734,
           "minOSVersion": "18.0"
         }
       ]

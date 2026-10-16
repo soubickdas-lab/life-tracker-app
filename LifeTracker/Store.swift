@@ -642,6 +642,15 @@ final class Store {
                 state.days[day].tasks[row].alarm = on
             }
         }
+        if on {
+            /* the alarm is a notification: without permission it is silent, so ask now,
+               and say so plainly when the answer was no */
+            let allowed = await Notifier.ask()
+            if allowed == .denied {
+                errorText = "Notifications are off for Life Tracker — turn them on in Settings or the alarm stays silent."
+            }
+        }
+        planned = ""                                       /* lay the alerts out again whatever else changed */
         let client = api
         await runWithReply { try await client.setAlarm(task.id, on) }
     }

@@ -82,53 +82,105 @@ struct SlotPicker: View {
         }
     }
 
-    // MARK: - The wheels
+    // MARK: - The panel
 
     private var picker: some View {
-        VStack(spacing: 12) {
-            Spacer().frame(height: 2)
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Set a time").font(.system(size: 15, weight: .semibold))
+                Text("Set a time").font(.system(size: 17, weight: .bold))
                 Spacer()
-                Button(allDay ? "All day ✓" : "All day") { allDay = true }
-                    .font(.system(size: 12))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(allDay ? UI.sky : .secondary)
+                Button {
+                    allDay.toggle()
+                } label: {
+                    Label("All day", systemImage: allDay ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(allDay ? UI.sky : .secondary)
+                }
+                .buttonStyle(.plain)
             }
 
-            /* the phone's wheels ignore the width they are given — each is boxed and clipped */
+            /* the usual answers, one tap each */
+            chips(["Now", "+15 min", "+30 min", "+1 hr", "Tonight"]) { pick in
+                let now = Self.rounded(Date())
+                switch pick {
+                case "Now":     start = now
+                case "+15 min": start = now.addingTimeInterval(15 * 60)
+                case "+30 min": start = now.addingTimeInterval(30 * 60)
+                case "+1 hr":   start = now.addingTimeInterval(3600)
+                default:        start = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: now) ?? now
+                }
+                end = start.addingTimeInterval(length)
+                allDay = false
+            }
+
             HStack(spacing: 8) {
                 wheel("Starts", $start)
                 wheel("Ends", $end)
             }
             .frame(maxWidth: .infinity)
-            .opacity(allDay ? 0.35 : 1)
+            .padding(.vertical, 6)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .opacity(allDay ? 0.4 : 1)
             .onChange(of: start) { _, fresh in
                 allDay = false
-                if end <= fresh { end = fresh.addingTimeInterval(3600) }
+                if end <= fresh { end = fresh.addingTimeInterval(length) }
             }
             .onChange(of: end) { _, _ in allDay = false }
 
-            Text(allDay ? "No time — it sits with the loose tasks."
-                        : Self.label(start) + " – " + Self.label(end))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(allDay ? .secondary : UI.sky)
+            /* how long it runs */
+            chips(["30 min", "45 min", "1 hr", "1.5 hr", "2 hr"]) { pick in
+                let minutes: Double = ["30 min": 30, "45 min": 45, "1 hr": 60, "1.5 hr": 90, "2 hr": 120][pick] ?? 60
+                end = start.addingTimeInterval(minutes * 60)
+                allDay = false
+            }
+
+            HStack {
+                Text(allDay ? "No time — it sits with the loose tasks"
+                            : Self.label(start) + " – " + Self.label(end) + "  ·  " + Self.lengthText(end.timeIntervalSince(start)))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(allDay ? .secondary : UI.sky)
+                Spacer()
+            }
 
             HStack {
                 Button("Cancel") { open = false }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Done") { write(); open = false }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                Button { write(); open = false } label: {
+                    Text(allDay ? "Save as all day" : "Set time")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 6)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
             }
         }
-        .padding(16)
+        .padding(18)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
+    /// A row of small round choices.
+    private func chips(_ names: [String], tap: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 6) {
+            ForEach(names, id: \.self) { name in
+                Button { tap(name) } label: {
+                    Text(name)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.primary.opacity(0.06), in: Capsule())
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var length: TimeInterval { max(1800, end.timeIntervalSince(start)) }
+
     private func wheel(_ title: String, _ time: Binding<Date>) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
@@ -137,13 +189,14 @@ struct SlotPicker: View {
             DatePicker("", selection: time, displayedComponents: .hourAndMinute)
                 .labelsHidden()
                 .datePickerStyle(.wheel)
-                .frame(width: 166, height: 150)
+                .frame(width: 166, height: 140)
                 .clipped()
                 .compositingGroup()
             #else
             DatePicker("", selection: time, displayedComponents: .hourAndMinute)
                 .labelsHidden()
                 .datePickerStyle(.stepperField)
+                .padding(.vertical, 8)
             #endif
         }
         .frame(maxWidth: .infinity)
@@ -165,21 +218,27 @@ struct SlotPicker: View {
                                    : from.addingTimeInterval(3600)
             allDay = false
         } else {
-            start = Self.nextHalfHour(today: dayIsToday)
+            start = Self.rounded(Date())
             end = start.addingTimeInterval(3600)
             allDay = true
         }
     }
 
-    private static func nextHalfHour(today: Bool) -> Date {
+    /// Now, to the next five minutes — the wheel then starts where the clock is.
+    static func rounded(_ date: Date) -> Date {
         let calendar = Calendar.current
-        let now = Date()
-        guard today else { return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now }
-        var parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: now)
+        var parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         let minute = parts.minute ?? 0
-        parts.minute = minute < 30 ? 30 : 0
-        if minute >= 30 { parts.hour = (parts.hour ?? 0) + 1 }
-        return calendar.date(from: parts) ?? now
+        let up = (minute + 4) / 5 * 5
+        parts.minute = up % 60
+        if up >= 60 { parts.hour = (parts.hour ?? 0) + 1 }
+        return calendar.date(from: parts) ?? date
+    }
+
+    static func lengthText(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return "\(minutes) min" }
+        return minutes % 60 == 0 ? "\(minutes / 60) hr" : String(format: "%.1f hr", Double(minutes) / 60)
     }
 
     static func label(_ time: Date) -> String {
