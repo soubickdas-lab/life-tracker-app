@@ -1,21 +1,47 @@
 import SwiftUI
 
-/// The time on a task you are about to add. Nothing picked means all day.
-/// Offers half hours from the next one onward, so the common case is one tap.
+/// The time on a task: two wheels, start and end, the way the phone's clock does it.
+/// Nothing picked means all day. The same picker serves the add box, a task's own
+/// time tag and the Scheduled form, so a time is set the same way everywhere.
 struct SlotPicker: View {
     @Binding var slot: String
     var dayIsToday: Bool
+    var style: Style = .composer
+
+    enum Style {
+        case composer                           /* the "Set time" pill in the add box */
+        case row(tint: Color, rings: Bool)      /* a task's own time tag, or a clock when it has none */
+        case form                               /* a plain field-like button in a form */
+    }
 
     @State private var open = false
-    @State private var start: Date?
-    @State private var end: Date?
-    @State private var typed = ""
+    @State private var start = Date()
+    @State private var end = Date()
+    @State private var allDay = true
 
     var body: some View {
         Button {
             readBack()
             open = true
-        } label: {
+        } label: { label }
+        .buttonStyle(.plain)
+        .help(slot.isEmpty ? "Give this a time" : "Tap to change the time")
+        #if os(macOS)
+        .popover(isPresented: $open, arrowEdge: .top) {
+            picker.frame(width: 340)
+        }
+        #else
+        .sheet(isPresented: $open) {
+            picker.presentationDetents([.medium])
+        }
+        #endif
+    }
+
+    // MARK: - The button
+
+    @ViewBuilder private var label: some View {
+        switch style {
+        case .composer:
             Text(slot.isEmpty ? "Set time" : slot)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .lineLimit(1)
@@ -23,160 +49,137 @@ struct SlotPicker: View {
                 .padding(.vertical, 5)
                 .background(UI.sky.opacity(slot.isEmpty ? 0.12 : 0.18), in: Capsule())
                 .foregroundStyle(UI.sky)
+        case .row(let tint, let rings):
+            if slot.isEmpty {
+                Image(systemName: "clock")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.secondary.opacity(0.5))
+                    .frame(width: 25, height: 25)
+                    .background(Color.primary.opacity(0.05), in: Circle())
+            } else {
+                HStack(spacing: 4) {
+                    if rings { Image(systemName: "bell.fill").font(.system(size: 9, weight: .bold)) }
+                    Text(slot)
+                }
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(tint.opacity(0.14), in: Capsule())
+                .fixedSize()
+            }
+        case .form:
+            HStack {
+                Text(slot.isEmpty ? "All day" : slot)
+                    .foregroundStyle(slot.isEmpty ? .secondary : .primary)
+                Spacer()
+                Image(systemName: "clock").foregroundStyle(.secondary)
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .help("Pick when this starts — leave it and the task is all day")
-        #if os(macOS)
-        .popover(isPresented: $open, arrowEdge: .top) {
-            picker.frame(width: 320)
-        }
-        #else
-        .sheet(isPresented: $open) {
-            picker.presentationDetents([.medium, .large])
-        }
-        #endif
     }
 
-    // MARK: - The panel
+    // MARK: - The wheels
 
     private var picker: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 12) {
+            Spacer().frame(height: 2)
             HStack {
                 Text("Set a time").font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Button("All day") { slot = ""; start = nil; end = nil; open = false }
+                Button(allDay ? "All day ✓" : "All day") { allDay = true }
                     .font(.system(size: 12))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(allDay ? UI.sky : .secondary)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    /* once a start is set, the next decision goes on top where it can be seen */
-                    if let start {
-                        section("Ends", times: endTimes(after: start), picked: end) { choice in
-                            end = choice
-                            write()
-                        }
-                    }
-
-                    section(start == nil ? "Starts" : "Change the start",
-                            times: startTimes, picked: start) { choice in
-                        start = choice
-                        end = choice.addingTimeInterval(3600)   /* an hour, unless changed above */
-                        write()
-                    }
-                }
-                .padding(.bottom, 4)
+            /* the phone's wheels ignore the width they are given — each is boxed and clipped */
+            HStack(spacing: 8) {
+                wheel("Starts", $start)
+                wheel("Ends", $end)
             }
-            .frame(maxHeight: 260)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("or type it").font(.system(size: 11)).foregroundStyle(.secondary)
-                HStack(spacing: 8) {
-                    TextField("8:15-9 pm", text: $typed)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 12))
-                        .onSubmit { useTyped() }
-                    Button("Use") { useTyped() }
-                        .disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
+            .frame(maxWidth: .infinity)
+            .opacity(allDay ? 0.35 : 1)
+            .onChange(of: start) { _, fresh in
+                allDay = false
+                if end <= fresh { end = fresh.addingTimeInterval(3600) }
             }
+            .onChange(of: end) { _, _ in allDay = false }
+
+            Text(allDay ? "No time — it sits with the loose tasks."
+                        : Self.label(start) + " – " + Self.label(end))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(allDay ? .secondary : UI.sky)
 
             HStack {
+                Button("Cancel") { open = false }
+                    .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Done") { open = false }
+                Button("Done") { write(); open = false }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }
         }
         .padding(16)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func section(_ title: String, times: [Date], picked: Date?,
-                         tap: @escaping (Date) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+    private func wheel(_ title: String, _ time: Binding<Date>) -> some View {
+        VStack(spacing: 2) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
                 .foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 7)], spacing: 7) {
-                ForEach(times, id: \.self) { time in
-                    let on = picked.map { Calendar.current.isDate($0, equalTo: time, toGranularity: .minute) } ?? false
-                    Button { tap(time) } label: {
-                        Text(Self.label(time))
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .background(on ? UI.sky : Color.primary.opacity(0.06),
-                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .foregroundStyle(on ? .white : .primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            #if os(iOS)
+            DatePicker("", selection: time, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.wheel)
+                .frame(width: 166, height: 150)
+                .clipped()
+                .compositingGroup()
+            #else
+            DatePicker("", selection: time, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.stepperField)
+            #endif
         }
-    }
-
-    // MARK: - The times on offer
-
-    /// Half hours: from the next one when the day is today, otherwise the whole day.
-    private var startTimes: [Date] {
-        let calendar = Calendar.current
-        let now = Date()
-        var first = calendar.startOfDay(for: now)
-
-        if dayIsToday {
-            var parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: now)
-            let minute = parts.minute ?? 0
-            parts.minute = minute < 30 ? 30 : 0
-            if minute >= 30 { parts.hour = (parts.hour ?? 0) + 1 }
-            first = calendar.date(from: parts) ?? now
-        }
-
-        let slots = halfHours(from: first)
-        return slots.isEmpty ? halfHours(from: calendar.startOfDay(for: now)) : slots
-    }
-
-    private func endTimes(after start: Date) -> [Date] {
-        Array(halfHours(from: start.addingTimeInterval(1800)).prefix(16))
-    }
-
-    /// Every half hour from `first` until that day is out.
-    private func halfHours(from first: Date) -> [Date] {
-        let calendar = Calendar.current
-        let stop = calendar.startOfDay(for: first).addingTimeInterval(24 * 3600)
-        var out: [Date] = []
-        var cursor = first
-        while cursor < stop && out.count < 48 {
-            out.append(cursor)
-            cursor = cursor.addingTimeInterval(1800)
-        }
-        return out
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Reading and writing the text
 
     private func write() {
-        guard let start else { return }
-        let finish = end ?? start.addingTimeInterval(3600)
-        slot = Self.label(start) + " - " + Self.label(finish)
+        slot = allDay ? "" : Self.label(start) + " - " + Self.label(end)
     }
 
-    private func useTyped() {
-        let clean = typed.trimmingCharacters(in: .whitespaces)
-        guard !clean.isEmpty else { return }
-        slot = clean
-        start = nil
-        end = nil
-        open = false
-    }
-
-    /// Puts the two halves of "11:00 AM - 12:00 PM" back on the grid.
+    /// Puts "11:00 AM - 12:00 PM" back on the wheels; nothing set means the
+    /// next half hour, which is the usual answer.
     private func readBack() {
-        typed = ""
         let halves = slot.components(separatedBy: " - ")
-        start = halves.first.flatMap(Self.moment)
-        end = halves.count > 1 ? Self.moment(halves[1]) : nil
-        if start == nil { typed = slot }
+        if let from = halves.first.flatMap(Self.moment) {
+            start = from
+            end = halves.count > 1 ? (Self.moment(halves[1]) ?? from.addingTimeInterval(3600))
+                                   : from.addingTimeInterval(3600)
+            allDay = false
+        } else {
+            start = Self.nextHalfHour(today: dayIsToday)
+            end = start.addingTimeInterval(3600)
+            allDay = true
+        }
+    }
+
+    private static func nextHalfHour(today: Bool) -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        guard today else { return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: now) ?? now }
+        var parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: now)
+        let minute = parts.minute ?? 0
+        parts.minute = minute < 30 ? 30 : 0
+        if minute >= 30 { parts.hour = (parts.hour ?? 0) + 1 }
+        return calendar.date(from: parts) ?? now
     }
 
     static func label(_ time: Date) -> String {

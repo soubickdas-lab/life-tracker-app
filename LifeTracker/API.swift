@@ -247,6 +247,22 @@ struct TrackerAPI: Sendable {
         try await send(["api": "weight", "kg": kg])
     }
 
+    /// "Has anything changed?" — one row on the server, nothing to decode but a stamp.
+    func ping() async throws -> String {
+        guard isConfigured else { throw Failure.notConfigured }
+        guard var parts = URLComponents(string: Self.home + "/") else { throw Failure.badURL }
+        parts.queryItems = [URLQueryItem(name: "api", value: "ping")]
+        guard let url = parts.url else { throw Failure.badURL }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer " + token, forHTTPHeaderField: "authorization")
+        struct Pong: Decodable { var ok: Bool; var touched: String? }
+        let pong = try JSONDecoder().decode(Pong.self, from: try await URLSession.shared.data(for: request).0)
+        guard pong.ok else { throw Failure.server("no") }
+        return pong.touched ?? ""
+    }
+
     func logCalories(_ kcal: String) async throws -> TrackerState {
         try await send(["api": "calories", "kcal": kcal])
     }

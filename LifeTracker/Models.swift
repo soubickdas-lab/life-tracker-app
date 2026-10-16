@@ -3,6 +3,7 @@ import Foundation
 /// Everything the sheet hands back in one call.
 struct TrackerState: Codable, Sendable {
     var today: String = ""
+    var touched: String = ""        /* when the account last changed, from the server */
     var days: [DayBlock] = []
     var habits: [Habit] = []
     var weight: String = ""
@@ -18,6 +19,7 @@ struct TrackerState: Codable, Sendable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         today = (try? c.decode(String.self, forKey: .today)) ?? ""
+        touched = (try? c.decode(String.self, forKey: .touched)) ?? ""
         days = (try? c.decode([DayBlock].self, forKey: .days)) ?? []
         habits = (try? c.decode([Habit].self, forKey: .habits)) ?? []
         weight = (try? c.decode(String.self, forKey: .weight)) ?? ""

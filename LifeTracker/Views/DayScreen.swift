@@ -259,7 +259,6 @@ struct DayScreen: View {
             Menu {
                 Button(task.done ? "Mark as not done" : "Mark as done") { tick(task) }
                 Button("Rename…") { draft = task.task; editing = task.id }
-                Button("Change time…") { clockDraft = task.slot; clockEdit = task.id }
                 if !task.slot.isEmpty {
                     Button("Clear the time") { Task { await store.setTime(task, "") } }
                 }
@@ -345,33 +344,13 @@ struct DayScreen: View {
                 .onAppear { grabFocus("time-" + task.id) }
                 .onSubmit { commitTime(task) }
         } else {
-            Button {
-                clockDraft = task.slot
-                clockEdit = task.id
-            } label: {
-                if task.slot.isEmpty {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.secondary.opacity(0.5))
-                        .frame(width: 25, height: 25)
-                        .background(Color.primary.opacity(0.05), in: Circle())
-                } else {
-                    HStack(spacing: 4) {
-                        if task.rings {
-                            Image(systemName: "bell.fill").font(.system(size: 9, weight: .bold))
-                        }
-                        Text(task.slot)
-                    }
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(task.rings ? UI.amber : (task.repeats ? UI.violet : UI.sky))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background((task.rings ? UI.amber : (task.repeats ? UI.violet : UI.sky)).opacity(0.14), in: Capsule())
-                    .fixedSize()
-                }
-            }
-            .buttonStyle(.plain)
-            .help(task.slot.isEmpty ? "Give this a time" : "Tap to change the time")
+            SlotPicker(slot: Binding(get: { task.slot },
+                                     set: { picked in
+                                         if picked != task.slot { Task { await store.setTime(task, picked) } }
+                                     }),
+                       dayIsToday: label == "Today",
+                       style: .row(tint: task.rings ? UI.amber : (task.repeats ? UI.violet : UI.sky),
+                                   rings: task.rings))
         }
     }
 

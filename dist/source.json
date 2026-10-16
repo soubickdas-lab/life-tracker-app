@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "4.3",
-      "versionDate": "2026-10-10T00:00:00Z",
-      "versionDescription": "Timed tasks sit on top, loose ones below a line; no more All day badges. Alarm on a task from its menu — the phone rings at that time. Sort the day. Daily calories with a bar chart on the journey. Fixes battery drain.",
+      "version": "4.4",
+      "versionDate": "2026-10-16T00:00:00Z",
+      "versionDescription": "Set a time with scroll wheels — in the add box, on a task's time tag and in Scheduled. Habits lined up by what still needs doing. Checks the server far less often.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1516637,
+      "size": 1512356,
       "versions": [
         {
-          "version": "4.3",
+          "version": "4.4",
           "buildVersion": "36",
-          "date": "2026-10-10",
-          "localizedDescription": "Timed tasks sit on top, loose ones below a line; no more All day badges. Alarm on a task from its menu — the phone rings at that time. Sort the day. Daily calories with a bar chart on the journey. Fixes battery drain.",
+          "date": "2026-10-16",
+          "localizedDescription": "Set a time with scroll wheels — in the add box, on a task's time tag and in Scheduled. Habits lined up by what still needs doing. Checks the server far less often.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1516637,
+          "size": 1512356,
           "minOSVersion": "18.0"
         }
       ]

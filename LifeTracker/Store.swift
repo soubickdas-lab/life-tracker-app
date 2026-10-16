@@ -166,6 +166,8 @@ final class Store {
                 try? await Task.sleep(for: .seconds(25))
                 #endif
                 guard !Task.isCancelled, let self, self.isConfigured, !self.busy, !self.loading else { continue }
+                /* ask "anything new?" first — one row — and pull the day only when the answer moved */
+                if let stamp = try? await self.api.ping(), !stamp.isEmpty, stamp == self.state.touched { continue }
                 await self.refresh(quietly: true)
             }
         }

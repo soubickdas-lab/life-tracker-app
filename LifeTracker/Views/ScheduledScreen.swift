@@ -76,10 +76,8 @@ struct ScheduledScreen: View {
         HStack(spacing: 10) {
             DatePicker("", selection: $date, displayedComponents: .date)
                 .labelsHidden()
-            TextField("7-8 pm", text: $slot)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 100)
-                .onSubmit(add)
+            SlotPicker(slot: $slot, dayIsToday: false, style: .form)
+                .frame(width: 170)
         }
     }
 
