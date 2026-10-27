@@ -77,11 +77,13 @@ struct MenuBarList: View {
     }
 
     @ViewBuilder private func tasks(_ day: DayBlock) -> some View {
-        let open = day.tasks.filter { !$0.done }
+        let all = day.tasks.filter { !$0.done }
+        let open = all.filter { !$0.carried }.sorted { ($0.start.isEmpty ? "99" : $0.start) < ($1.start.isEmpty ? "99" : $1.start) }
+        let pile = all.count - open.count
         if open.isEmpty {
             hint(day.tasks.isEmpty ? "Nothing on today yet." : "All clear — the day is done.")
         } else {
-            Text("UPCOMING  \(open.count)")
+            Text("TODAY  \(open.count)" + (pile > 0 ? "   ·   \(pile) CARRIED OVER" : ""))
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.6)
                 .foregroundStyle(.secondary)
@@ -100,8 +102,6 @@ struct MenuBarList: View {
                         Text(task.slot)
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(UI.accent)
-                    } else if task.carried {
-                        Text("carried").font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                 }
                 .padding(.horizontal, 12)

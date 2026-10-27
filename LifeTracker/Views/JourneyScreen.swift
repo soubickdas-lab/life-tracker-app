@@ -17,12 +17,15 @@ struct JourneyScreen: View {
 
     private var journeys: [Journey] { store.state.journeys }
 
+    @State private var kg = ""
+    @State private var kcal = ""
+
     var body: some View {
         Page {
             if journeys.isEmpty {
                 Panel {
                     VStack(spacing: 12) {
-                        EmptyHint(icon: "flag.checkered",
+                        EmptyHint(icon: "flame",
                                   text: "No journey yet.\nSet a target and a date, and the days start counting down.")
                         Button { writing = true } label: {
                             Label("Start a journey", systemImage: "plus")
@@ -32,17 +35,11 @@ struct JourneyScreen: View {
                 }
             } else {
                 ForEach(journeys) { journey in
-                    countdown(journey)
-                    if journey.hasTarget { target(journey) }
-                    fuel(journey)
-                    habits(journey)
+                    hero(journey)
+                    checkIn(journey)
+                    progress(journey)
                     shelf(journey)
-                    record(journey)
                 }
-                Button { writing = true } label: {
-                    Label("Start another", systemImage: "plus")
-                }
-                .font(.system(size: 13))
             }
         }
         .sheet(isPresented: $writing) { JourneyForm(journey: nil) }
@@ -64,158 +61,180 @@ struct JourneyScreen: View {
         .refreshable { await store.refresh(quietly: true) }
     }
 
-    // MARK: - The clock
+    // MARK: - Where you are
 
-    private func countdown(_ journey: Journey) -> some View {
+    private func hero(_ journey: Journey) -> some View {
         Panel {
-            HStack(alignment: .center, spacing: 18) {
-                Ring(progress: Double(journey.timePct) / 100, size: 68, width: 7)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(journey.name)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                    Text("\(pretty(journey.starts)) → \(pretty(journey.ends))")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 7) {
-                        Tag(text: journey.pace, tint: UI.accent)
-                        Tag(text: "\(journey.daysLeft) left", tint: UI.violet, strong: true)
-                    }
-                }
-                Spacer(minLength: 0)
-                Menu {
-                    Button("Edit") { editing = journey }
-                    Button("End this journey", role: .destructive) {
-                        Task { await store.stopJourney(journey.id) }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle").font(.system(size: 16))
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-            }
-        }
-    }
-
-    // MARK: - The number you are chasing
-
-    private func target(_ journey: Journey) -> some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 10) {
-                heading("Where you are")
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(journey.from).font(.system(size: 17, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "arrow.right").font(.system(size: 11)).foregroundStyle(.tertiary)
-                    Text("\(journey.to) \(journey.unit)")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    Spacer()
-                    if !journey.now.isEmpty {
-                        Text("now \(journey.now) \(journey.unit)")
-                            .font(.system(size: 13, weight: .medium))
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(journey.name)
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(UI.violet)
+                        Text(journey.startsIn > 0 ? journey.pace : "Day \(journey.dayNumber)")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .tracking(-0.5)
+                        Text("of \(journey.daysTotal) · \(pretty(journey.starts)) → \(pretty(journey.ends))")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(journey.daysLeft)")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(UI.violet)
+                        Text("days left").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    menu(journey)
+                }
+                Meter(pct: journey.timePct, tint: UI.violet)
+
+                if journey.hasTarget {
+                    HStack(spacing: 0) {
+                        figure("Start", journey.from, journey.unit)
+                        figure("Now", journey.now.isEmpty ? "—" : journey.now, journey.unit, tint: UI.violet)
+                        figure("Goal", journey.to, journey.unit, tint: UI.mint)
                     }
                 }
-                Meter(pct: journey.movedPct ?? 0, tint: UI.violet)
-                Text(journey.movedPct == nil
-                     ? "Log today's weight and this fills in."
-                     : "\(journey.movedPct ?? 0)% of the way there")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-
-                WeightLine(readings: journey.weights,
-                           from: Double(journey.from),
-                           to: Double(journey.to))
-                    .padding(.top, 6)
             }
         }
     }
 
-    // MARK: - What went in
+    private func figure(_ label: String, _ value: String, _ unit: String, tint: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value).font(.system(size: 20, weight: .semibold, design: .rounded)).foregroundStyle(tint)
+                if value != "—" { Text(unit).font(.system(size: 12)).foregroundStyle(.secondary) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-    @State private var kcalDraft = ""
+    private func menu(_ journey: Journey) -> some View {
+        Menu {
+            Button("Edit dates and target") { editing = journey }
+            let spare = store.state.habits.map(\.name).filter { name in !journey.habits.contains { $0.name == name } }
+            if !spare.isEmpty {
+                Menu("Add a habit") {
+                    ForEach(spare, id: \.self) { name in
+                        Button(name) { Task { await store.journeyHabit(journey.id, habit: name, remove: false) } }
+                    }
+                }
+            }
+            Divider()
+            Button("Start a new journey") { writing = true }
+            Button("End this journey", role: .destructive) { Task { await store.stopJourney(journey.id) } }
+        } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: 17)).foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
 
-    private func fuel(_ journey: Journey) -> some View {
+    // MARK: - Today
+
+    /// Everything the day asks for, in one card: the habits, the scale, the plate.
+    private func checkIn(_ journey: Journey) -> some View {
         Panel {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    heading("Calories")
+                    heading("Today")
                     Spacer()
-                    if let goal = journey.caloriesGoal {
-                        Tag(text: "under \(goal)", tint: UI.amber)
-                    }
+                    Text("\(journey.doneToday) of \(journey.dueToday) done")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(journey.dueToday > 0 && journey.doneToday == journey.dueToday ? UI.mint : .secondary)
                 }
-                HStack(spacing: 10) {
-                    TextField("today's total", text: $kcalDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13))
-                        .frame(width: 120)
-                        #if os(iOS)
-                        .keyboardType(.numberPad)
-                        #endif
-                        .onSubmit { feed() }
-                    Text("kcal").font(.system(size: 12)).foregroundStyle(.secondary)
-                    Button("Save") { feed() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(UI.amber)
-                        .disabled(Int(kcalDraft.trimmingCharacters(in: .whitespaces)) == nil)
-                    Spacer()
-                    if !store.state.calories.isEmpty {
-                        Text("today \(store.state.calories)")
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(UI.amber)
-                    }
-                }
-                CalorieBars(days: journey.calories, goal: journey.caloriesGoal)
-                    .padding(.top, 4)
-            }
-        }
-    }
-
-    private func feed() {
-        let clean = kcalDraft.trimmingCharacters(in: .whitespaces)
-        guard Int(clean) != nil else { return }
-        kcalDraft = ""
-        Task { await store.logCalories(clean) }
-    }
-
-    // MARK: - The habits that get you there
-
-    private func habits(_ journey: Journey) -> some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    heading("What gets you there")
-                    Spacer()
-                    Text("\(journey.doneToday)/\(journey.dueToday) today")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(journey.dueToday > 0 && journey.doneToday == journey.dueToday
-                                         ? UI.mint : .secondary)
-                }
-
-                if journey.habits.isEmpty {
-                    Text("Attach the habits this journey lives on — ticking them anywhere counts here.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
                 ForEach(journey.habits) { habit in
                     ProofRow(journey: journey, habit: habit)
                 }
+                if journey.habits.isEmpty {
+                    Text("Add the habits this journey runs on from the ⋯ menu above.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                RowLine().padding(.vertical, 2)
+                logLine(icon: "scalemass", title: "Weight", unit: "kg", text: $kg, placeholder: store.state.weight.isEmpty ? "80.5" : store.state.weight,
+                        logged: todayRow?.wt ?? "", decimal: true) {
+                    let clean = kg.trimmingCharacters(in: .whitespaces)
+                    guard Double(clean) != nil else { return }
+                    kg = ""
+                    Task { await store.logWeight(clean) }
+                }
+                logLine(icon: "fork.knife", title: "Calories", unit: "kcal", text: $kcal, placeholder: "1800",
+                        logged: store.state.calories, decimal: false) {
+                    let clean = kcal.trimmingCharacters(in: .whitespaces)
+                    guard Int(clean) != nil else { return }
+                    kcal = ""
+                    Task { await store.logCalories(clean) }
+                }
+            }
+        }
+    }
 
-                let spare = store.state.habits
-                    .map(\.name)
-                    .filter { name in !journey.habits.contains { $0.name == name } }
-                if !spare.isEmpty {
-                    Menu {
-                        ForEach(spare, id: \.self) { name in
-                            Button(name) {
-                                Task { await store.journeyHabit(journey.id, habit: name, remove: false) }
-                            }
+    private var todayRow: BodyRow? { store.extra.body.first { $0.date == store.state.today } }
+
+    private func logLine(icon: String, title: String, unit: String, text: Binding<String>, placeholder: String,
+                         logged: String, decimal: Bool, save: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(logged.isEmpty ? Color.secondary : UI.mint)
+                .frame(width: 28, height: 28)
+                .background((logged.isEmpty ? Color.primary : UI.mint).opacity(0.08), in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 14))
+                Text(logged.isEmpty ? "not logged today" : "\(logged) \(unit) today")
+                    .font(.system(size: 11))
+                    .foregroundStyle(logged.isEmpty ? Color.secondary : UI.mint)
+            }
+            Spacer()
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
+                .multilineTextAlignment(.trailing)
+                .frame(width: 84)
+                #if os(iOS)
+                .keyboardType(decimal ? .decimalPad : .numberPad)
+                #endif
+                .onSubmit(save)
+            Text(unit).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 28, alignment: .leading)
+            Button(action: save) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(text.wrappedValue.isEmpty ? Color.secondary.opacity(0.35) : UI.accent, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(text.wrappedValue.isEmpty)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - How it is going
+
+    private func progress(_ journey: Journey) -> some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 14) {
+                heading("Progress")
+                HStack(spacing: 8) {
+                    StatTile(label: "Kept", value: "\(journey.keptPct)%", tint: UI.mint)
+                    StatTile(label: "Perfect days", value: "\(journey.perfectDays)", tint: UI.accent)
+                    StatTile(label: "Streak", value: "\(journey.perfectRun)", tint: UI.amber)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Weight").font(.system(size: 13, weight: .semibold))
+                    WeightLine(readings: journey.weights, from: Double(journey.from), to: Double(journey.to))
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Calories").font(.system(size: 13, weight: .semibold))
+                        if let goal = journey.caloriesGoal {
+                            Text("· under \(goal)").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
-                    } label: {
-                        Label("Add a habit", systemImage: "plus.circle")
-                            .font(.system(size: 13))
                     }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
+                    CalorieBars(days: journey.calories, goal: journey.caloriesGoal)
                 }
             }
         }
@@ -280,21 +299,6 @@ struct JourneyScreen: View {
             try? zip.write(to: where_)
             saved = SavedFile(url: where_)
             #endif
-        }
-    }
-
-    // MARK: - How it has gone
-
-    private func record(_ journey: Journey) -> some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 12) {
-                heading("So far")
-                HStack(spacing: 10) {
-                    StatTile(label: "Kept", value: "\(journey.keptPct)%", tint: UI.mint)
-                    StatTile(label: "Perfect days", value: "\(journey.perfectDays)", tint: UI.accent)
-                    StatTile(label: "On a run of", value: "\(journey.perfectRun)", tint: UI.amber)
-                }
-            }
         }
     }
 

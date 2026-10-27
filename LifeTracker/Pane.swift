@@ -1,25 +1,27 @@
 import Foundation
 
-/// The sheet's own tab bar, in the same order — one sidebar row per tab.
+/// The app's places. Three you live in — Today, the journey and Later — and the
+/// rest, which you visit now and then, tucked under More.
 enum Pane: String, CaseIterable, Identifiable, Sendable {
-    case today, tomorrow, yesterday
-    case habits, journey, money, dash, scheduled, longTerm, body, notes, setup, log
+    case today, journey, later
+    case habits, scheduled, dash, body, setup, log
 
     var id: String { rawValue }
+
+    /// The ones that get a tab of their own.
+    static let main: [Pane] = [.today, .journey, .later]
+    /// The ones under More.
+    static let rest: [Pane] = [.habits, .scheduled, .dash, .body, .setup, .log]
 
     var title: String {
         switch self {
         case .today:     return "Today"
-        case .tomorrow:  return "Tomorrow"
-        case .yesterday: return "Yesterday"
-        case .habits:    return "Habits"
         case .journey:   return "Journey"
-        case .money:     return "Money"
-        case .dash:      return "Dashboard"
+        case .later:     return "Later"
+        case .habits:    return "Habits"
         case .scheduled: return "Scheduled"
-        case .longTerm:  return "Long Term"
+        case .dash:      return "Dashboard"
         case .body:      return "Body"
-        case .notes:     return "Notes"
         case .setup:     return "Setup"
         case .log:       return "Log"
         }
@@ -28,28 +30,14 @@ enum Pane: String, CaseIterable, Identifiable, Sendable {
     var icon: String {
         switch self {
         case .today:     return "checkmark.circle"
-        case .tomorrow:  return "arrow.right.circle"
-        case .yesterday: return "arrow.left.circle"
-        case .habits:    return "flame"
-        case .journey:   return "flag.checkered"
-        case .money:     return "indianrupeesign.circle"
-        case .dash:      return "chart.bar"
+        case .journey:   return "flame"
+        case .later:     return "tray.full"
+        case .habits:    return "repeat"
         case .scheduled: return "calendar"
-        case .longTerm:  return "target"
+        case .dash:      return "chart.bar"
         case .body:      return "figure.walk"
-        case .notes:     return "note.text"
         case .setup:     return "gearshape"
         case .log:       return "clock.arrow.circlepath"
-        }
-    }
-
-    /// The three day tabs map onto the day blocks the sheet sends.
-    var dayLabel: String? {
-        switch self {
-        case .today:     return "Today"
-        case .tomorrow:  return "Tomorrow"
-        case .yesterday: return "Yesterday"
-        default:         return nil
         }
     }
 }

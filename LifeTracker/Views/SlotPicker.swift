@@ -1,76 +1,39 @@
 import SwiftUI
 
-/// The time on a task: two wheels, start and end, the way the phone's clock does it.
-/// Nothing picked means all day. The same picker serves the add box, a task's own
-/// time tag and the Scheduled form, so a time is set the same way everywhere.
+/// The "Set time" pill in the add box, and the field in the Scheduled form.
+/// Both open the same TimeSheet, so a time is set the same way everywhere.
 struct SlotPicker: View {
     @Binding var slot: String
     var dayIsToday: Bool
     var style: Style = .composer
 
-    enum Style {
-        case composer                           /* the "Set time" pill in the add box */
-        case row(tint: Color, rings: Bool)      /* a task's own time tag, or a clock when it has none */
-        case form                               /* a plain field-like button in a form */
-    }
+    enum Style { case composer, form }
 
     @State private var open = false
-    @State private var start = Date()
-    @State private var end = Date()
-    @State private var allDay = true
 
     var body: some View {
-        Button {
-            readBack()
-            open = true
-        } label: { label }
-        .buttonStyle(.plain)
-        .help(slot.isEmpty ? "Give this a time" : "Tap to change the time")
-        #if os(macOS)
-        .popover(isPresented: $open, arrowEdge: .top) {
-            picker.frame(width: 340)
-        }
-        #else
-        .sheet(isPresented: $open) {
-            picker.presentationDetents([.medium])
-        }
-        #endif
+        Button { open = true } label: { label }
+            .buttonStyle(.plain)
+            .help(slot.isEmpty ? "Give this a time" : "Change the time")
+            .timeSheet(isPresented: $open, slot: slot, dayIsToday: dayIsToday) { slot = $0 }
     }
-
-    // MARK: - The button
 
     @ViewBuilder private var label: some View {
         switch style {
         case .composer:
-            Text(slot.isEmpty ? "Set time" : slot)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .lineLimit(1)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 5)
-                .background(UI.sky.opacity(slot.isEmpty ? 0.12 : 0.18), in: Capsule())
-                .foregroundStyle(UI.sky)
-        case .row(let tint, let rings):
-            if slot.isEmpty {
-                Image(systemName: "clock")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.secondary.opacity(0.5))
-                    .frame(width: 25, height: 25)
-                    .background(Color.primary.opacity(0.05), in: Circle())
-            } else {
-                HStack(spacing: 4) {
-                    if rings { Image(systemName: "bell.fill").font(.system(size: 9, weight: .bold)) }
-                    Text(slot)
-                }
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(tint)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(tint.opacity(0.14), in: Capsule())
-                .fixedSize()
+            HStack(spacing: 4) {
+                Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
+                Text(slot.isEmpty ? "Time" : TimeSheet.short(slot))
             }
+            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(UI.sky.opacity(slot.isEmpty ? 0.10 : 0.18), in: Capsule())
+            .foregroundStyle(slot.isEmpty ? Color.secondary : UI.sky)
         case .form:
             HStack {
-                Text(slot.isEmpty ? "All day" : slot)
+                Text(slot.isEmpty ? "No time" : slot)
                     .foregroundStyle(slot.isEmpty ? .secondary : .primary)
                 Spacer()
                 Image(systemName: "clock").foregroundStyle(.secondary)
@@ -81,25 +44,59 @@ struct SlotPicker: View {
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
+}
 
-    // MARK: - The panel
+extension View {
+    /// The time sheet: a popover on the Mac, a half-height sheet on the phone.
+    func timeSheet(isPresented: Binding<Bool>, slot: String, dayIsToday: Bool,
+                   onDone: @escaping (String) -> Void) -> some View {
+        #if os(macOS)
+        popover(isPresented: isPresented, arrowEdge: .top) {
+            TimeSheet(initial: slot, dayIsToday: dayIsToday,
+                      onDone: { isPresented.wrappedValue = false; onDone($0) },
+                      onCancel: { isPresented.wrappedValue = false })
+                .frame(width: 360)
+        }
+        #else
+        sheet(isPresented: isPresented) {
+            TimeSheet(initial: slot, dayIsToday: dayIsToday,
+                      onDone: { isPresented.wrappedValue = false; onDone($0) },
+                      onCancel: { isPresented.wrappedValue = false })
+                .presentationDetents([.height(480), .large])
+        }
+        #endif
+    }
+}
 
-    private var picker: some View {
+/// Start and end on two wheels, quick picks above, how-long below.
+/// It opens on the task's own time, or on now when there is none.
+struct TimeSheet: View {
+    var initial: String
+    var dayIsToday: Bool
+    var onDone: (String) -> Void
+    var onCancel: () -> Void
+
+    @State private var start = Date()
+    @State private var end = Date()
+    @State private var noTime = true
+    @State private var ready = false
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Set a time").font(.system(size: 17, weight: .bold))
+                Text(initial.isEmpty ? "Set a time" : "Change the time")
+                    .font(.system(size: 17, weight: .bold))
                 Spacer()
                 Button {
-                    allDay.toggle()
+                    noTime.toggle()
                 } label: {
-                    Label("All day", systemImage: allDay ? "checkmark.circle.fill" : "circle")
+                    Label("No time", systemImage: noTime ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(allDay ? UI.sky : .secondary)
+                        .foregroundStyle(noTime ? UI.sky : .secondary)
                 }
                 .buttonStyle(.plain)
             }
 
-            /* the usual answers, one tap each */
             chips(["Now", "+15 min", "+30 min", "+1 hr", "Tonight"]) { pick in
                 let now = Self.rounded(Date())
                 switch pick {
@@ -110,7 +107,7 @@ struct SlotPicker: View {
                 default:        start = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: now) ?? now
                 }
                 end = start.addingTimeInterval(length)
-                allDay = false
+                noTime = false
             }
 
             HStack(spacing: 8) {
@@ -120,34 +117,35 @@ struct SlotPicker: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .opacity(allDay ? 0.4 : 1)
-            .onChange(of: start) { _, fresh in
-                allDay = false
-                if end <= fresh { end = fresh.addingTimeInterval(length) }
+            .opacity(noTime ? 0.4 : 1)
+            .onChange(of: start) { was, fresh in
+                guard ready else { return }
+                noTime = false
+                /* moving the start carries the end with it, keeping the length */
+                let kept = max(1800, end.timeIntervalSince(was))
+                if end <= fresh || end.timeIntervalSince(was) > 0 { end = fresh.addingTimeInterval(kept) }
             }
-            .onChange(of: end) { _, _ in allDay = false }
+            .onChange(of: end) { _, _ in if ready { noTime = false } }
 
-            /* how long it runs */
             chips(["30 min", "45 min", "1 hr", "1.5 hr", "2 hr"]) { pick in
                 let minutes: Double = ["30 min": 30, "45 min": 45, "1 hr": 60, "1.5 hr": 90, "2 hr": 120][pick] ?? 60
                 end = start.addingTimeInterval(minutes * 60)
-                allDay = false
+                noTime = false
             }
 
-            HStack {
-                Text(allDay ? "No time — it sits with the loose tasks"
-                            : Self.label(start) + " – " + Self.label(end) + "  ·  " + Self.lengthText(end.timeIntervalSince(start)))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(allDay ? .secondary : UI.sky)
-                Spacer()
-            }
+            Text(noTime ? "No time — it goes in To do"
+                        : Self.label(start) + " – " + Self.label(end) + "  ·  " + Self.lengthText(end.timeIntervalSince(start)))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(noTime ? .secondary : UI.sky)
 
             HStack {
-                Button("Cancel") { open = false }
+                Button("Cancel") { onCancel() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button { write(); open = false } label: {
-                    Text(allDay ? "Save as all day" : "Set time")
+                Button {
+                    onDone(noTime ? "" : Self.label(start) + " - " + Self.label(end))
+                } label: {
+                    Text(noTime ? "Save without time" : "Set time")
                         .font(.system(size: 14, weight: .semibold))
                         .padding(.horizontal, 6)
                 }
@@ -157,9 +155,14 @@ struct SlotPicker: View {
         }
         .padding(18)
         .frame(maxHeight: .infinity, alignment: .top)
+        .onAppear {
+            readBack()
+            DispatchQueue.main.async { ready = true }   /* the first fill is not a change */
+        }
     }
 
-    /// A row of small round choices.
+    private var length: TimeInterval { max(1800, end.timeIntervalSince(start)) }
+
     private func chips(_ names: [String], tap: @escaping (String) -> Void) -> some View {
         HStack(spacing: 6) {
             ForEach(names, id: \.self) { name in
@@ -176,8 +179,6 @@ struct SlotPicker: View {
             Spacer(minLength: 0)
         }
     }
-
-    private var length: TimeInterval { max(1800, end.timeIntervalSince(start)) }
 
     private func wheel(_ title: String, _ time: Binding<Date>) -> some View {
         VStack(spacing: 0) {
@@ -202,25 +203,18 @@ struct SlotPicker: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Reading and writing the text
-
-    private func write() {
-        slot = allDay ? "" : Self.label(start) + " - " + Self.label(end)
-    }
-
-    /// Puts "11:00 AM - 12:00 PM" back on the wheels; nothing set means the
-    /// next half hour, which is the usual answer.
+    /// "11:00 AM - 12:00 PM" back onto the wheels; nothing set means now.
     private func readBack() {
-        let halves = slot.components(separatedBy: " - ")
+        let halves = initial.components(separatedBy: " - ")
         if let from = halves.first.flatMap(Self.moment) {
             start = from
             end = halves.count > 1 ? (Self.moment(halves[1]) ?? from.addingTimeInterval(3600))
                                    : from.addingTimeInterval(3600)
-            allDay = false
+            noTime = false
         } else {
             start = Self.rounded(Date())
             end = start.addingTimeInterval(3600)
-            allDay = true
+            noTime = true
         }
     }
 
@@ -248,8 +242,13 @@ struct SlotPicker: View {
         return writer.string(from: time)
     }
 
+    /// "11:00 AM - 12:00 PM" → "11:00 AM", for a pill with little room.
+    static func short(_ slot: String) -> String {
+        slot.components(separatedBy: " - ").first ?? slot
+    }
+
     /// "11:00 AM" on today's date.
-    private static func moment(_ text: String) -> Date? {
+    static func moment(_ text: String) -> Date? {
         let reader = DateFormatter()
         reader.locale = Locale(identifier: "en_US_POSIX")
         reader.dateFormat = "h:mm a"

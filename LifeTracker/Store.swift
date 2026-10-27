@@ -231,14 +231,41 @@ final class Store {
         await run(note: "Deleted \(task.task)") { try await client.delete(task.id) }
     }
 
-    /// Not a job for today after all: off the day, onto the Long Term list.
+    /// Not a job for today after all: off the day, onto the Later list.
     func toLongTerm(_ task: TaskItem) async {
         for day in state.days.indices {
             state.days[day].tasks.removeAll { $0.id == task.id }   /* gone from the day at once */
         }
         extra.scheduled.removeAll { $0.id == task.id }
+        extra.goals.append(Goal(row: -Int.random(in: 1...9_999_999), goal: task.task, why: "", target: "",
+                                status: "Idea", pct: 0, notes: ""))
         let client = api
-        await runFull(note: "🎯 Moved to Long Term") { try await client.toLongTerm(task.id) }
+        await runFull(note: "Moved to Later") { try await client.toLongTerm(task.id) }
+    }
+
+    /// The whole carried-over pile to Later at once.
+    func toLater(_ tasks: [TaskItem]) async {
+        let ids = Set(tasks.map(\.id))
+        guard !ids.isEmpty else { return }
+        for day in state.days.indices {
+            state.days[day].tasks.removeAll { ids.contains($0.id) }
+        }
+        for task in tasks {
+            extra.goals.append(Goal(row: -Int.random(in: 1...9_999_999), goal: task.task, why: "", target: "",
+                                    status: "Idea", pct: 0, notes: ""))
+        }
+        let client = api
+        await runFull(note: "Moved \(ids.count) to Later") { try await client.toLater(Array(ids)) }
+    }
+
+    /// Later → today: the item turns back into a task.
+    func planToToday(_ goal: Goal) async {
+        extra.goals.removeAll { $0.row == goal.row }
+        if let index = state.days.firstIndex(where: { $0.label == "Today" }) {
+            state.days[index].tasks.insert(TaskItem(id: "pending-" + UUID().uuidString, task: goal.goal, pending: true), at: 0)
+        }
+        let client = api
+        await runFull(note: "On today: \(goal.goal)") { try await client.planToToday(row: goal.row) }
     }
 
     func rename(_ task: TaskItem, to text: String) async {
@@ -347,7 +374,6 @@ final class Store {
                 state = fresh
                 replanAlerts()
             }
-            if let month = answer.money { extra.money = month }
             chat.append(ChatLine(mine: false, text: answer.reply ?? "Done."))
         } catch {
             chat.append(ChatLine(mine: false, text: error.localizedDescription, failed: true))
@@ -376,7 +402,6 @@ final class Store {
                 state = fresh
                 replanAlerts()
             }
-            if let month = answer.money { extra.money = month }
             chat.append(ChatLine(mine: false, text: answer.reply ?? "Done."))
         } catch {
             if let at = chat.firstIndex(where: { $0.id == mine.id }) { chat[at].text = "🎤 voice message" }
@@ -385,94 +410,6 @@ final class Store {
     }
 
     func clearChat() { chat = [] }
-
-    // MARK: - Money
-
-    /// The month the money screen is showing — this one unless you paged back.
-    var moneyShowing: String { extra.money.month.isEmpty ? state.money.month : extra.money.month }
-    var moneyIsThisMonth: Bool { moneyShowing == state.money.month }
-
-    /// A rupee in or out. It is on the list and in the balance before the server
-    /// has heard of it; the reply then swaps the stand-in for the real row.
-    func addMoney(amount: Double, isIn: Bool, category: String, note: String, day: String? = nil) async {
-        guard amount > 0 else { return }
-        let when = day ?? state.today
-        let kind = isIn ? "in" : "out"
-
-        if when.hasPrefix(moneyShowing) {
-            extra.money.entries.insert(
-                MoneyEntry(id: -Int.random(in: 1...9_999_999), day: when, amount: amount,
-                           kind: kind, category: category, note: note), at: 0)
-        }
-        if when.hasPrefix(state.money.month) {
-            if isIn { state.money.came += amount } else { state.money.went += amount }
-            state.money.balance += isIn ? amount : -amount
-            state.money.entries += 1
-            if when == state.today {
-                if isIn { state.money.todayIn += amount } else { state.money.todayOut += amount }
-            }
-        }
-
-        var params = ["api": "money", "amount": String(amount), "kind": kind,
-                      "category": category, "note": note, "show": moneyShowing]
-        if let day { params["day"] = day }
-        await runMoney(params)
-    }
-
-    func deleteMoney(_ entry: MoneyEntry) async {
-        extra.money.entries.removeAll { $0.id == entry.id }
-        if entry.day.hasPrefix(state.money.month) {
-            if entry.isIn { state.money.came -= entry.amount } else { state.money.went -= entry.amount }
-            state.money.balance += entry.isIn ? -entry.amount : entry.amount
-        }
-        guard entry.id > 0 else { return }          /* never reached the server */
-        await runMoney(["api": "moneydel", "id": String(entry.id), "show": moneyShowing])
-    }
-
-    func editMoney(_ entry: MoneyEntry, amount: Double, isIn: Bool, category: String, note: String) async {
-        guard entry.id > 0, amount > 0 else { return }
-        if let at = extra.money.entries.firstIndex(where: { $0.id == entry.id }) {
-            extra.money.entries[at].amount = amount
-            extra.money.entries[at].kind = isIn ? "in" : "out"
-            extra.money.entries[at].category = category
-            extra.money.entries[at].note = note
-        }
-        await runMoney(["api": "moneyedit", "id": String(entry.id), "amount": String(amount),
-                        "kind": isIn ? "in" : "out", "category": category, "note": note,
-                        "show": moneyShowing])
-    }
-
-    /// What the month began with. An empty answer lets it carry on from last month.
-    func setOpening(_ amount: String, month: String) async {
-        await runMoney(["api": "moneyopen", "amount": amount, "month": month, "show": moneyShowing])
-    }
-
-    func showMoney(month: String) async {
-        await runMoney(["api": "moneymonth", "show": month])
-    }
-
-    private func runMoney(_ params: [String: String]) async {
-        issued += 1
-        let mine = issued
-        beginWork(quiet: false)
-        defer { endWork() }
-        do {
-            let (fresh, month) = try await api.money(params)
-            if mine == issued {
-                state = fresh
-                if let month { extra.money = month }
-            }
-            lastSync = Date()
-            errorText = nil
-            replanAlerts()
-        } catch TrackerAPI.Failure.waiting {
-            waiting = true
-        } catch TrackerAPI.Failure.signedOut {
-            signOut()
-        } catch {
-            errorText = error.localizedDescription
-        }
-    }
 
     // MARK: - Journeys
 
@@ -627,12 +564,11 @@ final class Store {
         await run(note: "🍽 \(kcal) kcal") { try await client.logCalories(kcal) }
     }
 
+    /// A quick thought for later.
     func addNote(_ text: String) async {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
-        state.notes.insert(Note(when: "just now", text: clean), at: 0)
-        let client = api
-        await run(note: "🗒 Noted") { try await client.addNote(clean) }
+        await saveGoal(row: 0, fields: ["goal": clean, "status": "Idea", "pct": "0"])
     }
 
     /// The phone rings at the task's time. Needs a time, so the server may say no.
@@ -877,7 +813,9 @@ final class Store {
         snap.pretty = today.pretty
         snap.done = today.doneCount
         snap.total = today.tasks.count
-        snap.lines = today.tasks.filter { !$0.done }.prefix(6).map {
+        snap.lines = today.tasks.filter { !$0.done && !$0.carried }
+            .sorted { ($0.start.isEmpty ? "99" : $0.start) < ($1.start.isEmpty ? "99" : $1.start) }
+            .prefix(6).map {
             Shared.Snapshot.Line(text: $0.task, slot: $0.slot)
         }
         snap.habitsDone = habitsDone

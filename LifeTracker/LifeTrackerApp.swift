@@ -23,7 +23,7 @@ struct LifeTrackerApp: App {
         .defaultSize(width: 980, height: 800)
         .commands {
             CommandGroup(after: .toolbar) {
-                ForEach(Array(Pane.allCases.enumerated()), id: \.element) { index, pane in
+                ForEach(Array((Pane.main + Pane.rest).enumerated()), id: \.element) { index, pane in
                     Button(pane.title) { store.pane = pane }
                         .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 }
@@ -54,7 +54,7 @@ struct RootView: View {
     @State private var showChat = false
     @State private var copied = false
     #if os(iOS)
-    @AppStorage("phoneTab") private var phoneTab = 0   /* reopen where you left off */
+    @AppStorage("phoneTab2") private var phoneTab = 0  /* reopen where you left off */
     @State private var morePath: [Pane] = []
     #endif
 
@@ -218,11 +218,9 @@ struct RootView: View {
         #endif
     }
 
-    /// The journey tab is only there once you have one, and it wears its own name.
-    private var panes: [Pane] {
-        (store.state.journeys.isEmpty && store.pane != .journey)
-            ? Pane.allCases.filter { $0 != .journey }
-            : Pane.allCases
+    /// The journey is there once you have one, and wears its own name.
+    private var mainPanes: [Pane] {
+        Pane.main.filter { $0 != .journey || !store.state.journeys.isEmpty }
     }
 
     private func title(of pane: Pane) -> String {
@@ -233,27 +231,20 @@ struct RootView: View {
     @ViewBuilder private var content: some View {
         #if os(iOS)
         TabView(selection: $phoneTab) {
-            wrap(DayScreen(label: "Today"), "Today")
-                .tabItem { Label("Today", systemImage: "checkmark.circle") }
+            wrap(DayScreen(), "")
+                .tabItem { Label("Today", systemImage: Pane.today.icon) }
                 .tag(0)
-            wrap(DayScreen(label: "Tomorrow"), "Tomorrow")
-                .tabItem { Label("Tomorrow", systemImage: "arrow.right.circle") }
-                .tag(1)
             if let journey = store.state.journeys.first {
-                wrap(JourneyScreen(), journey.name)
-                    .tabItem { Label(shortName(journey.name), systemImage: "flag.checkered") }
-                    .tag(2)
-            } else {
-                wrap(GoalsScreen(), "Long Term")
-                    .tabItem { Label("Long Term", systemImage: Pane.longTerm.icon) }
-                    .tag(2)
+                wrap(JourneyScreen(), "")
+                    .tabItem { Label(shortName(journey.name), systemImage: Pane.journey.icon) }
+                    .tag(1)
             }
-            wrap(MoneyScreen(), "Money")
-                .tabItem { Label("Money", systemImage: Pane.money.icon) }
-                .tag(3)
+            wrap(LaterScreen(), "")
+                .tabItem { Label("Later", systemImage: Pane.later.icon) }
+                .tag(2)
             moreTab
                 .tabItem { Label("More", systemImage: "square.grid.2x2") }
-                .tag(4)
+                .tag(3)
         }
         .onChange(of: store.jump) { _, page in
             guard let page else { return }
@@ -262,15 +253,24 @@ struct RootView: View {
         }
         #else
         NavigationSplitView {
-            List(panes, selection: Binding<Pane?>(
+            List(selection: Binding<Pane?>(
                 get: { store.pane },
-                set: { store.pane = $0 ?? .today })) { item in
-                Label(title(of: item), systemImage: item.icon).tag(item)
+                set: { store.pane = $0 ?? .today })) {
+                Section {
+                    ForEach(mainPanes) { item in
+                        Label(title(of: item), systemImage: item.icon).tag(item)
+                    }
+                }
+                Section("More") {
+                    ForEach(Pane.rest) { item in
+                        Label(item.title, systemImage: item.icon).tag(item)
+                    }
+                }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             NavigationStack {
-                paneView
+                paneScreen(store.pane)
                     .navigationTitle(title(of: store.pane))
                     .toolbar {
                         ToolbarItem {
@@ -286,19 +286,15 @@ struct RootView: View {
         #endif
     }
 
-    /// Every screen the sheet has, on both platforms.
     @ViewBuilder private func paneScreen(_ pane: Pane) -> some View {
         switch pane {
-        case .today, .tomorrow, .yesterday:
-            DayScreen(label: pane.dayLabel ?? "Today")
-        case .habits:    HabitsScreen()
+        case .today:     DayScreen()
         case .journey:   JourneyScreen()
-        case .money:     MoneyScreen()
-        case .dash:      DashboardScreen()
+        case .later:     LaterScreen()
+        case .habits:    HabitsScreen()
         case .scheduled: ScheduledScreen()
-        case .longTerm:  GoalsScreen()
+        case .dash:      DashboardScreen()
         case .body:      BodyScreen()
-        case .notes:     NotesScreen()
         case .setup:     SetupScreen()
         case .log:       LogScreen()
         }
@@ -316,37 +312,23 @@ struct RootView: View {
 
     /// A page with its own tab gets that tab; everything else opens under More.
     private func go(to page: Pane) {
-        let hasJourney = !store.state.journeys.isEmpty
         switch page {
-        case .today:                      phoneTab = 0
-        case .tomorrow:                   phoneTab = 1
-        case .journey where hasJourney:   phoneTab = 2
-        case .longTerm where !hasJourney: phoneTab = 2
-        case .money:                      phoneTab = 3
+        case .today:   phoneTab = 0
+        case .journey: phoneTab = store.state.journeys.isEmpty ? 0 : 1
+        case .later:   phoneTab = 2
         default:
             morePath = [page]
-            phoneTab = 4
+            phoneTab = 3
         }
     }
 
-    /// The rest of the sheet, so nothing on the phone is out of reach.
     private var moreTab: some View {
         NavigationStack(path: $morePath) {
             List {
-                Section("Days") {
-                    pageLink(.yesterday)
-                    pageLink(.scheduled)
-                }
-                Section("Tracking") {
-                    if !store.state.journeys.isEmpty { pageLink(.longTerm) }
-                    pageLink(.habits)
-                    pageLink(.dash)
-                    pageLink(.body)
-                    pageLink(.notes)
-                }
-                Section("App") {
-                    pageLink(.setup)
-                    pageLink(.log)
+                Section {
+                    ForEach(Pane.rest) { pane in
+                        NavigationLink(value: pane) { Label(pane.title, systemImage: pane.icon) }
+                    }
                 }
             }
             .navigationTitle("More")
@@ -363,14 +345,6 @@ struct RootView: View {
     private func shortName(_ name: String) -> String {
         name.count <= 12 ? name : String(name.prefix(11)) + "…"
     }
-
-    private func pageLink(_ pane: Pane) -> some View {
-        NavigationLink(value: pane) {
-            Label(pane.title, systemImage: pane.icon)
-        }
-    }
-    #else
-    @ViewBuilder private var paneView: some View { paneScreen(store.pane) }
     #endif
 
     private var settingsButton: some ToolbarContent {

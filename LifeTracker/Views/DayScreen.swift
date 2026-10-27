@@ -1,192 +1,285 @@
 import SwiftUI
 
-/// A day: how it is going, its tasks, and a line to add the next one.
+/// The day, in the order you read it: what is booked at a time, what else is on,
+/// and — folded away — whatever rolled over from earlier days.
 struct DayScreen: View {
     @Environment(Store.self) private var store
-    var label: String
 
+    @State private var label = "Today"
     @State private var newTask = ""
-    @State private var kcal = ""
-    @AppStorage("taskSort") private var sortKey = TaskSort.mine.rawValue
     @State private var newSlot = ""
+    @AppStorage("taskSort") private var sortKey = TaskSort.mine.rawValue
+    @AppStorage("carriedOpen") private var carriedOpen = false
+    @State private var doneOpen = false
     @State private var editing: String?
     @State private var draft = ""
-    @State private var clockEdit: String?
-    @State private var clockDraft = ""
+    @State private var timing: TaskItem?
+    @State private var confirmLater = false
     @FocusState private var focus: String?
-    @State private var kg = ""
     @State private var dropTarget: String?
-    @State private var lingering: Set<String> = []     /* just ticked — still shown up top */
+    @State private var lingering: Set<String> = []     /* just ticked — still shown in place */
 
     private var day: DayBlock? { store.state.days.first { $0.label == label } }
 
     var body: some View {
         Page {
+            dayPicker
             if let day {
                 header(day)
-                if label == "Today" {
-                    ForEach(store.state.journeys) { journey in
-                        Button { store.open(.journey) } label: { JourneyStrip(journey: journey) }
-                            .buttonStyle(.plain)
-                    }
-                    if !store.state.money.isEmpty {
-                        Button { store.open(.money) } label: { MoneyStrip(money: store.state.money) }
-                            .buttonStyle(.plain)
-                    }
+                composer(day)
+                if label == "Today", let journey = store.state.journeys.first {
+                    JourneyCard(journey: journey)
                 }
-                tasks(day)
-                if label == "Today" { habits; weight }
+                taskPanel(day)
+                if label == "Today" { habitsPanel }
             } else {
                 Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your day…") }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { putEditorsAway() }           /* a click on empty space only closes the box */
         .onChange(of: focus) { was, now in
-            guard was != nil, now == nil else { return }
-            putEditorsAway()                          /* tabbed or clicked away */
+            if was != nil, now == nil { putEditorsAway() }
         }
         #if os(macOS)
-        .onExitCommand { cancelEditors() }            /* Escape drops what was typed */
+        .onExitCommand { editing = nil; focus = nil }
         #endif
         .refreshable { await store.refresh(quietly: true) }
+        .timeSheet(isPresented: Binding(get: { timing != nil }, set: { if !$0 { timing = nil } }),
+                   slot: timing?.slot ?? "", dayIsToday: label == "Today") { picked in
+            if let task = timing, picked != task.slot { Task { await store.setTime(task, picked) } }
+            timing = nil
+        }
+        .confirmationDialog("Move everything carried over to Later?", isPresented: $confirmLater,
+                            titleVisibility: .visible) {
+            Button("Move \(carried.count) to Later") { Task { await store.toLater(carried) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They leave today and wait in Later. You can bring any of them back with one tap.")
+        }
     }
 
-    // MARK: - Header
+    // MARK: - The parts of the day
+
+    private var open: [TaskItem] {
+        (day?.tasks ?? []).filter { !$0.done || lingering.contains($0.id) }
+    }
+    private var scheduled: [TaskItem] {
+        open.filter { !$0.start.isEmpty && !$0.carried }.sorted { $0.start < $1.start }
+    }
+    private var loose: [TaskItem] {
+        (TaskSort(rawValue: sortKey) ?? .mine).apply(open.filter { $0.start.isEmpty && !$0.carried })
+    }
+    private var carried: [TaskItem] { open.filter(\.carried) }
+    private var done: [TaskItem] {
+        (day?.tasks ?? []).filter { $0.done && !lingering.contains($0.id) }
+    }
+
+    // MARK: - Top
+
+    private var dayPicker: some View {
+        Picker("", selection: $label) {
+            Text("Yesterday").tag("Yesterday")
+            Text("Today").tag("Today")
+            Text("Tomorrow").tag("Tomorrow")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 420)
+        .frame(maxWidth: .infinity)
+    }
 
     private func header(_ day: DayBlock) -> some View {
-        Panel {
-            HStack(spacing: 16) {
-                Ring(progress: day.progress, size: 56)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(day.label)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                    Text(day.pretty)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                HStack(spacing: 7) {
-                    Tag(text: "\(day.doneCount) done", tint: UI.mint, strong: day.doneCount > 0)
-                    Tag(text: "\(day.openCount) left", tint: UI.amber, strong: day.openCount > 0)
-                    if store.busy {
-                        ProgressView().controlSize(.small)
-                    }
-                }
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(weekday(day.date))
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .tracking(-0.4)
+                Text(summary(day))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+            Ring(progress: day.progress, size: 50, width: 5)
         }
+        .padding(.horizontal, 4)
     }
 
-    // MARK: - Task list
+    private func summary(_ day: DayBlock) -> String {
+        let total = day.tasks.count - carried.count
+        let finished = day.tasks.filter(\.done).count
+        var line = prettyDate(day.date)
+        if total > 0 { line += " · \(finished) of \(total) done" }
+        return line
+    }
 
-    @ViewBuilder private func tasks(_ day: DayBlock) -> some View {
-        let sort = TaskSort(rawValue: sortKey) ?? .mine
-        let open = sort.apply(day.tasks.filter { !$0.done || lingering.contains($0.id) })
-        let done = sort.apply(day.tasks.filter { $0.done && !lingering.contains($0.id) })
+    /// The add box: its own tinted strip, so it reads as "type here".
+    private func composer(_ day: DayBlock) -> some View {
+        let ready = !newTask.trimmingCharacters(in: .whitespaces).isEmpty
+        return HStack(spacing: 10) {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(UI.accent, in: Circle())
+            TextField(label == "Today" ? "Add a task…" : "Add to \(label.lowercased())…", text: $newTask)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .focused($focus, equals: "new")
+                .onSubmit { add(day) }
+            SlotPicker(slot: $newSlot, dayIsToday: label == "Today")
+            if ready {
+                Button { add(day) } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 26, height: 26)
+                        .background(UI.accent, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.15), value: ready)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(UI.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(UI.accent.opacity(0.22), lineWidth: 1))
+    }
 
+    // MARK: - The list
+
+    @ViewBuilder private func taskPanel(_ day: DayBlock) -> some View {
         Panel(padding: 0) {
             VStack(spacing: 0) {
-                heading("Upcoming", count: open.count, tint: UI.accent, sort: true)
-                addRow(day)
-                if open.isEmpty {
-                    EmptyHint(icon: day.tasks.isEmpty ? "checklist" : "checkmark.seal",
-                              text: day.tasks.isEmpty ? "Nothing on this day yet.\nAdd the first thing above."
-                                                      : "All clear — everything here is done.")
-                } else {
-                    /* the ones with a time, then a line, then the loose ones */
-                    let timed = open.filter { !$0.start.isEmpty }
-                    let loose = open.filter { $0.start.isEmpty }
-                    if !timed.isEmpty { list(timed) }
-                    if !timed.isEmpty && !loose.isEmpty { divider("No time set", count: loose.count) }
-                    if !loose.isEmpty { list(loose) }
+                if scheduled.isEmpty && loose.isEmpty && carried.isEmpty {
+                    EmptyHint(icon: day.tasks.isEmpty ? "sun.max" : "checkmark.seal",
+                              text: day.tasks.isEmpty ? "Nothing planned yet." : "All clear — everything is done.")
                 }
-            }
-        }
 
-        if !done.isEmpty {
-            Panel(padding: 0) {
-                VStack(spacing: 0) {
-                    heading("Done", count: done.count, tint: UI.mint)
-                    list(done)
+                if !scheduled.isEmpty {
+                    section("Schedule", count: scheduled.count)
+                    rows(scheduled, timed: true)
+                }
+
+                if !loose.isEmpty {
+                    if !scheduled.isEmpty { gap }
+                    section("To do", count: loose.count) { sortMenu }
+                    rows(loose, timed: false, draggable: true)
+                }
+
+                if !carried.isEmpty {
+                    if !scheduled.isEmpty || !loose.isEmpty { gap }
+                    fold(title: "Carried over", count: carried.count, open: $carriedOpen, tint: UI.amber) {
+                        Button { confirmLater = true } label: {
+                            Text("Move all to Later")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(UI.amber.opacity(0.16), in: Capsule())
+                                .foregroundStyle(UI.amber)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if carriedOpen { rows(carried, timed: false) }
+                }
+
+                if !done.isEmpty {
+                    gap
+                    fold(title: "Done", count: done.count, open: $doneOpen, tint: UI.mint) { EmptyView() }
+                    if doneOpen { rows(done, timed: false) }
                 }
             }
+            .padding(.bottom, 4)
         }
     }
 
-    /// The header on each of the two lists.
-    private func heading(_ title: String, count: Int, tint: Color, sort: Bool = false) -> some View {
+    private var gap: some View { RowLine().padding(.top, 4) }
+
+    private func section(_ title: String, count: Int,
+                         @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View {
         HStack(spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
+            Text("\(count)")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
             Spacer()
-            if sort { sortMenu }
-            if count > 0 { Tag(text: "\(count)", tint: tint, strong: true) }
+            trailing()
         }
         .padding(.horizontal, 16)
         .padding(.top, 13)
-        .padding(.bottom, 9)
+        .padding(.bottom, 4)
     }
 
-    /// How the list is ordered — remembered across days and launches.
+    /// A heading that opens and shuts what is under it.
+    private func fold(title: String, count: Int, open: Binding<Bool>, tint: Color,
+                      @ViewBuilder trailing: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { open.wrappedValue.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .rotationEffect(.degrees(open.wrappedValue ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                    Text(title.uppercased())
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.7)
+                        .foregroundStyle(.secondary)
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(tint.opacity(0.16), in: Capsule())
+                        .foregroundStyle(tint)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            trailing()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+    }
+
     private var sortMenu: some View {
         let current = TaskSort(rawValue: sortKey) ?? .mine
         return Menu {
             ForEach(TaskSort.allCases) { choice in
-                Button {
-                    sortKey = choice.rawValue
-                } label: {
-                    if choice == current { Label(choice.title, systemImage: "checkmark") }
-                    else { Text(choice.title) }
+                Button { sortKey = choice.rawValue } label: {
+                    if choice == current { Label(choice.title, systemImage: "checkmark") } else { Text(choice.title) }
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.up.arrow.down").font(.system(size: 9, weight: .semibold))
-                Text(current.title).font(.system(size: 11, weight: .medium, design: .rounded))
-            }
-            .foregroundStyle(current == .mine ? .secondary : UI.accent)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background((current == .mine ? Color.primary.opacity(0.05) : UI.accent.opacity(0.12)), in: Capsule())
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(current == .mine ? Color.secondary : UI.accent)
+                .frame(width: 26, height: 22)
+                .contentShape(Rectangle())
         }
         .barelyAMenu()
-        .help("Change the order of the list")
+        .help("Order: \(current.title)")
     }
 
-    /// The line between the timed tasks and the loose ones.
-    private func divider(_ title: String, count: Int) -> some View {
-        HStack(spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.7)
-                .foregroundStyle(.tertiary)
-            Text("\(count)")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
-            Rectangle().fill(UI.hairline).frame(height: 1)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 6)
-        .background(Color.primary.opacity(0.02))
-    }
-
-    private func list(_ tasks: [TaskItem]) -> some View {
+    private func rows(_ tasks: [TaskItem], timed: Bool, draggable: Bool = false) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
-                oldRowBody(task)
-                if index < tasks.count - 1 { RowLine(leading: 52) }
+                Group {
+                    if draggable { movable(task, timed: timed) } else { row(task, timed: timed) }
+                }
+                if index < tasks.count - 1 { RowLine(leading: timed ? 118 : 52) }
             }
         }
     }
 
-    /// One row, ready to be picked up and dropped somewhere else.
-    private func oldRowBody(_ task: TaskItem) -> some View {
-        row(task)
+    /// A To do row can be dragged into a new place.
+    private func movable(_ task: TaskItem, timed: Bool) -> some View {
+        row(task, timed: timed)
             .draggable(task.id) {
-                Text(task.task)                     /* what you see under the cursor */
+                Text(task.task)
                     .font(.system(size: 13, weight: .medium))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
@@ -201,258 +294,156 @@ struct DayScreen: View {
                 dropTarget = over ? task.id : (dropTarget == task.id ? nil : dropTarget)
             }
             .overlay(alignment: .top) {
-                if dropTarget == task.id {
-                    Rectangle().fill(UI.accent).frame(height: 2)
-                }
+                if dropTarget == task.id { Rectangle().fill(UI.accent).frame(height: 2) }
             }
     }
 
-    private func row(_ task: TaskItem) -> some View {
-        let naming = editing == task.id
-        let timing = clockEdit == task.id
-
-        return HStack(spacing: 11) {
+    private func row(_ task: TaskItem, timed: Bool) -> some View {
+        HStack(spacing: 10) {
             TickCircle(on: task.done) { tick(task) }
 
-            if naming {
-                TextField("Task", text: $draft)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .focused($focus, equals: "name-" + task.id)
-                    .onAppear { grabFocus("name-" + task.id) }
-                    .onSubmit { commit(task) }
-            } else {
-                #if os(macOS)
-                HStack(spacing: 8) {
-                    name(task)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if task.carried { Tag(text: "carried", tint: UI.amber) }
-                }
-                .frame(maxWidth: .infinity)
-                .allowsHitTesting(false)          /* the whole row ticks — let clicks fall through */
-                #else
-                VStack(alignment: .leading, spacing: 3) {
-                    name(task)
-                        .allowsHitTesting(false)
-                    if !timing {
-                        HStack(spacing: 6) {
-                            if task.carried { Tag(text: "carried", tint: UI.amber) }
-                            timeControl(task, timing: false)
-                            repeatButton(task)
+            if timed {
+                Button { timing = task } label: {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(TimeSheet.short(task.slot))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(task.rings ? UI.amber : UI.sky)
+                        if let end = task.slot.components(separatedBy: " - ").dropFirst().first {
+                            Text(end)
+                                .font(.system(size: 10, design: .rounded))
+                                .foregroundStyle(.tertiary)
                         }
                     }
+                    .frame(width: 66, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Change the time")
+            }
+
+            if editing == task.id {
+                TextField("Task", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 15))
+                    .focused($focus, equals: "name-" + task.id)
+                    .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { focus = "name-" + task.id } }
+                    .onSubmit { commit(task) }
+            } else {
+                HStack(spacing: 6) {
+                    Text(task.task)
+                        .font(.system(size: 15))
+                        .strikethrough(task.done, color: .secondary)
+                        .foregroundStyle(task.done ? .secondary : .primary)
+                        .lineLimit(2)
+                    if task.pending { ProgressView().controlSize(.mini) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                #endif
             }
 
-            /* on the Mac the time and the repeat switch live on the right of the row */
-            #if os(macOS)
-            if !naming {
-                timeControl(task, timing: timing)
-                repeatButton(task)
+            if !timed && !task.slot.isEmpty {
+                Text(TimeSheet.short(task.slot))
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.tertiary)
             }
-            #else
-            if timing { timeControl(task, timing: true) }
-            #endif
-
-            Menu {
-                Button(task.done ? "Mark as not done" : "Mark as done") { tick(task) }
-                Button("Rename…") { draft = task.task; editing = task.id }
-                if !task.slot.isEmpty {
-                    Button("Clear the time") { Task { await store.setTime(task, "") } }
-                }
-                Divider()
-                if task.slot.isEmpty {
-                    Button("Alarm needs a time") {}.disabled(true)
-                } else {
-                    Button(task.alarm == true ? "Alarm off" : "Alarm on — ring at \(task.slot.components(separatedBy: " - ").first ?? task.slot)") {
-                        Task { await store.setAlarm(task, task.alarm != true) }
-                    }
-                }
-                Button(task.repeats ? "Stop repeating" : "Repeat every day") {
-                    Task { await store.setRepeat(task, !task.repeats) }
-                }
-                Divider()
-                Button("Move to tomorrow") { Task { await store.move(task, to: "tomorrow") } }
-                Button("Save to Long Term") { Task { await store.toLongTerm(task) } }
-                Divider()
-                Button("Delete", role: .destructive) { Task { await store.delete(task) } }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
+            if task.rings && !timed {
+                Image(systemName: "bell.fill").font(.system(size: 10)).foregroundStyle(UI.amber)
             }
-            .barelyAMenu()
-        }
-        .padding(.horizontal, 14)
-        .frame(height: UI.rowHeight)
-        .opacity(task.pending ? 0.6 : 1)
-        .background(alignment: .leading) {
-            /* a repeating task wears a violet edge, so the daily ones read at a glance */
             if task.repeats {
-                Rectangle()
-                    .fill(UI.violet)
-                    .frame(width: 3)
-                    .clipShape(Capsule())
-                    .padding(.vertical, 7)
+                Image(systemName: "repeat").font(.system(size: 10, weight: .bold)).foregroundStyle(UI.violet.opacity(0.8))
             }
+
+            menu(task)
         }
-        .background(tickLayer(task, busy: naming || timing))
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .padding(.vertical, 4)
+        .frame(minHeight: UI.rowHeight)
+        .opacity(task.pending ? 0.6 : 1)
     }
 
-    private func name(_ task: TaskItem) -> some View {
-        HStack(spacing: 7) {
-            Text(task.task)
-                .font(.system(size: 14))
-                .strikethrough(task.done, color: .secondary)
-                .foregroundStyle(task.done ? .secondary : .primary)
-                .lineLimit(1)
-            if task.pending { ProgressView().controlSize(.mini) }
-        }
-    }
-
-    /// Tap it and the task comes back tomorrow, and every day after.
-    private func repeatButton(_ task: TaskItem) -> some View {
-        Button {
-            guard !task.pending else { return }
-            Task { await store.setRepeat(task, !task.repeats) }
-        } label: {
-            Image(systemName: "repeat")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(task.repeats ? .white : Color.secondary.opacity(0.5))
-                .frame(width: 25, height: 25)
-                .background(task.repeats ? UI.violet : Color.primary.opacity(0.05), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .animation(.snappy(duration: 0.18), value: task.repeats)
-        .help(task.repeats ? "Repeats every day — tap to stop" : "Repeat this every day")
-    }
-
-    /// The time: a tap target that turns into a box you can type in.
-    @ViewBuilder private func timeControl(_ task: TaskItem, timing: Bool) -> some View {
-        if timing {
-            TextField("7-8 pm", text: $clockDraft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .multilineTextAlignment(.trailing)
-                .frame(width: 118)
-                .focused($focus, equals: "time-" + task.id)
-                .onAppear { grabFocus("time-" + task.id) }
-                .onSubmit { commitTime(task) }
-        } else {
-            SlotPicker(slot: Binding(get: { task.slot },
-                                     set: { picked in
-                                         if picked != task.slot { Task { await store.setTime(task, picked) } }
-                                     }),
-                       dayIsToday: label == "Today",
-                       style: .row(tint: task.rings ? UI.amber : (task.repeats ? UI.violet : UI.sky),
-                                   rings: task.rings))
-        }
-    }
-
-    /// Strictly not a tick target: the circle is the only thing that ticks.
-    /// This layer exists only to put away a box that was left open.
-    private func tickLayer(_ task: TaskItem, busy: Bool) -> some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.0001))
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if editing != nil || clockEdit != nil { putEditorsAway() }
-            }
-    }
-
-    /// The composer: its own tinted box at the top of the list, so it reads as
-    /// "type here", not as one more row.
-    private func addRow(_ day: DayBlock) -> some View {
-        let ready = !newTask.trimmingCharacters(in: .whitespaces).isEmpty
-        return HStack(spacing: 12) {
-            Image(systemName: "plus")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 24, height: 24)
-                .background(UI.accent, in: Circle())
-
-            TextField("What needs doing \(day.label == "Today" ? "today" : day.label.lowercased())?", text: $newTask)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .onSubmit { add(day) }
-
-            SlotPicker(slot: $newSlot, dayIsToday: day.label == "Today")
-
-            Button { add(day) } label: {
-                Text("Add")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(ready ? UI.accent : UI.accent.opacity(0.14), in: Capsule())
-                    .foregroundStyle(ready ? .white : UI.accent)
-            }
-            .buttonStyle(.plain)
-            .disabled(!ready)
-            .animation(.snappy(duration: 0.15), value: ready)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(UI.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(UI.accent.opacity(0.18), lineWidth: 1))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
-    }
-
-    // MARK: - Today extras
-
-    /// A section title that also takes you to that section's own page.
-    private func sectionLink(_ title: String, to page: Pane) -> some View {
-        Button { store.open(page) } label: {
-            HStack(spacing: 4) {
-                Text(title).font(.system(size: 15, weight: .semibold))
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var habits: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    sectionLink("Habits", to: .habits)
-                    Spacer()
-                    Text("\(store.habitsDone)/\(store.state.habits.count)")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
+    private func menu(_ task: TaskItem) -> some View {
+        Menu {
+            Button(task.done ? "Mark as not done" : "Mark as done") { tick(task) }
+            Button("Rename") { draft = task.task; editing = task.id }
+            Button(task.slot.isEmpty ? "Set a time" : "Change the time") { timing = task }
+            if !task.slot.isEmpty {
+                Button(task.alarm == true ? "Turn the alarm off" : "Alarm at \(TimeSheet.short(task.slot))") {
+                    Task { await store.setAlarm(task, task.alarm != true) }
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 9)], spacing: 9) {
-                    ForEach(store.state.habits) { habit in
-                        Group {
-                            HStack(spacing: 9) {
-                                TickCircle(on: habit.done, tint: UI.amber) { Task { await store.toggle(habit) } }
-                                VStack(alignment: .leading, spacing: 1) {
+            }
+            Button(task.repeats ? "Stop repeating" : "Repeat every day") {
+                Task { await store.setRepeat(task, !task.repeats) }
+            }
+            Divider()
+            if label != "Today" {
+                Button("Move to today") { Task { await store.move(task, to: "today") } }
+            }
+            if label != "Tomorrow" {
+                Button("Move to tomorrow") { Task { await store.move(task, to: "tomorrow") } }
+            }
+            Button("Move to Later") { Task { await store.toLongTerm(task) } }
+            Divider()
+            Button("Delete", role: .destructive) { Task { await store.delete(task) } }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .barelyAMenu()
+        .disabled(task.pending)
+    }
+
+    // MARK: - Habits that are not part of the journey
+
+    @ViewBuilder private var habitsPanel: some View {
+        let journeyHabits = Set(store.state.journeys.flatMap { $0.habits.map(\.name) })
+        let habits = store.state.habits.filter { !journeyHabits.contains($0.name) }
+        if !habits.isEmpty {
+            Panel(padding: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("HABITS")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(0.7)
+                            .foregroundStyle(.secondary)
+                        Text("\(habits.filter(\.done).count)/\(habits.count)")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        Button { store.open(.habits) } label: {
+                            Image(systemName: "slider.horizontal.3").font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Manage habits")
+                    }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                        ForEach(habits) { habit in
+                            Button { Task { await store.toggle(habit) } } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: habit.done ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(habit.done ? UI.mint : Color.secondary.opacity(0.5))
                                     Text(habit.name)
                                         .font(.system(size: 13))
-                                        .strikethrough(habit.done, color: .secondary)
                                         .foregroundStyle(habit.done ? .secondary : .primary)
                                         .lineLimit(2)
                                         .multilineTextAlignment(.leading)
                                         .fixedSize(horizontal: false, vertical: true)
-                                    if habit.streak > 0 {
-                                        Text("\(habit.streak) day streak")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.secondary)
+                                    Spacer(minLength: 0)
+                                    if habit.streak > 1 {
+                                        Text("\(habit.streak)🔥").font(.system(size: 10)).foregroundStyle(.secondary)
                                     }
                                 }
-                                Spacer(minLength: 0)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(habit.done ? UI.mint.opacity(0.10) : Color.primary.opacity(0.035),
+                                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 9)
-                            .background(habit.done ? UI.amber.opacity(0.12) : Color.primary.opacity(0.04),
-                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -460,81 +451,24 @@ struct DayScreen: View {
         }
     }
 
-    /// Today's weight, in the same place you tick everything else off.
-    private var weight: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    sectionLink("Weight & calories", to: .body)
-                    Spacer()
-                    if !store.state.calories.isEmpty {
-                        Tag(text: "\(store.state.calories) kcal today", tint: UI.amber, strong: true)
-                    }
-                    if !store.state.weight.isEmpty {
-                        Tag(text: "last \(store.state.weight) kg", tint: UI.violet, strong: true)
-                    }
-                }
-                HStack(spacing: 10) {
-                    TextField("72.5", text: $kg)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13))
-                        .frame(width: 110)
-                        #if os(iOS)
-                        .keyboardType(.decimalPad)
-                        #endif
-                        .onSubmit { saveWeight() }
-                    Text("kg").font(.system(size: 12)).foregroundStyle(.secondary)
-                    Button("Save") { saveWeight() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(Double(kg.trimmingCharacters(in: .whitespaces)) == nil)
-                    Spacer()
-                }
-                HStack(spacing: 10) {
-                    TextField("1800", text: $kcal)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13))
-                        .frame(width: 110)
-                        #if os(iOS)
-                        .keyboardType(.numberPad)
-                        #endif
-                        .onSubmit { saveCalories() }
-                    Text("kcal").font(.system(size: 12)).foregroundStyle(.secondary)
-                    Button("Save") { saveCalories() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(UI.amber)
-                        .disabled(Int(kcal.trimmingCharacters(in: .whitespaces)) == nil)
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    private func saveCalories() {
-        let clean = kcal.trimmingCharacters(in: .whitespaces)
-        guard Int(clean) != nil else { return }
-        kcal = ""
-        Task { await store.logCalories(clean) }
-    }
-
-    private func saveWeight() {
-        let clean = kg.trimmingCharacters(in: .whitespaces)
-        guard Double(clean) != nil else { return }
-        kg = ""
-        Task { await store.logWeight(clean) }
-    }
-
     // MARK: - Actions
+
+    private func add(_ day: DayBlock) {
+        let name = newTask, slot = newSlot
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        newTask = ""; newSlot = ""
+        Task { await store.add(name, slot: slot, to: day) }
+    }
 
     private func commit(_ task: TaskItem) {
         let clean = draft.trimmingCharacters(in: .whitespaces)
         editing = nil
         focus = nil
-        if clean.isEmpty { Task { await store.delete(task) } }
-        else if clean != task.task { Task { await store.rename(task, to: clean) } }
+        if !clean.isEmpty && clean != task.task { Task { await store.rename(task, to: clean) } }
     }
 
-    /// Ticking holds the task where it is for a few seconds, so you can see what you
-    /// just did — and undo it — before it drops into Done. Bringing one back is instant.
+    /// A tick holds the row in place for a few seconds, so the tap can be seen —
+    /// and undone — before it folds into Done.
     private func tick(_ task: TaskItem) {
         guard !task.pending else { return }
         if task.done {
@@ -543,57 +477,120 @@ struct DayScreen: View {
             lingering.insert(task.id)
             let id = task.id
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
-                lingering.remove(id)
+                try? await Task.sleep(for: .seconds(4))
+                withAnimation(.snappy) { _ = lingering.remove(id) }
             }
         }
         Task { await store.toggle(task) }
     }
 
-    /// Saves and shuts whichever box is open. Called when the click, or the focus, goes elsewhere.
     private func putEditorsAway() {
-        let tasks = day?.tasks ?? []
-        if let id = clockEdit {
-            if let task = tasks.first(where: { $0.id == id }) { commitTime(task) } else { clockEdit = nil }
-        }
-        if let id = editing {
-            if let task = tasks.first(where: { $0.id == id }) { commit(task) } else { editing = nil }
-        }
-        focus = nil
-    }
-
-    /// Escape: shut the box and keep what the sheet already had.
-    private func cancelEditors() {
-        clockEdit = nil
+        if let id = editing, let task = day?.tasks.first(where: { $0.id == id }) { commit(task) }
         editing = nil
-        focus = nil
     }
 
-    /// A newly shown field is not in the responder chain yet — focus it a tick later.
-    private func grabFocus(_ id: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { focus = id }
+    // MARK: - Dates
+
+    private func date(_ day: String) -> Date? {
+        let take = DateFormatter()
+        take.locale = Locale(identifier: "en_US_POSIX")
+        take.dateFormat = "yyyy-MM-dd"
+        return take.date(from: day)
     }
 
-    /// Saves whatever was typed into the row's time box — blank means all day.
-    private func commitTime(_ task: TaskItem) {
-        let clean = clockDraft.trimmingCharacters(in: .whitespaces)
-        clockEdit = nil
-        focus = nil
-        guard clean != task.slot else { return }
-        Task { await store.setTime(task, clean) }
+    private func weekday(_ day: String) -> String {
+        guard let when = date(day) else { return label }
+        let show = DateFormatter()
+        show.dateFormat = "EEEE"
+        return show.string(from: when)
     }
 
-    private func add(_ day: DayBlock) {
-        let name = newTask, slot = newSlot
-        newTask = ""; newSlot = ""
-        Task { await store.add(name, slot: slot, to: day) }
+    private func prettyDate(_ day: String) -> String {
+        guard let when = date(day) else { return day }
+        let show = DateFormatter()
+        show.dateFormat = "d MMMM"
+        return (label == "Today" ? "" : label + " · ") + show.string(from: when)
     }
 }
 
-/// The orders a day's list can be shown in. "My order" is the sheet's own,
-/// which is what dragging rows changes.
+/// Fat loss on Today: where you are in it, and today's four boxes — one tap each.
+struct JourneyCard: View {
+    @Environment(Store.self) private var store
+    var journey: Journey
+
+    var body: some View {
+        Panel(padding: 14) {
+            VStack(alignment: .leading, spacing: 11) {
+                Button { store.open(.journey) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(UI.violet, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(journey.name).font(.system(size: 15, weight: .semibold))
+                            Text(journey.startsIn > 0 ? journey.pace
+                                 : "Day \(journey.dayNumber) of \(journey.daysTotal) · \(journey.daysLeft) left")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("\(journey.doneToday)/\(journey.dueToday)")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(journey.dueToday > 0 && journey.doneToday == journey.dueToday ? UI.mint : UI.violet)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 7)], spacing: 7) {
+                    ForEach(journey.habits.filter(\.due)) { habit in
+                        Button { tap(habit) } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: icon(habit))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(habit.ticked ? UI.mint : UI.violet)
+                                Text(habit.name)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundStyle(habit.ticked ? .secondary : .primary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
+                            .background(habit.ticked ? UI.mint.opacity(0.10) : UI.violet.opacity(0.07),
+                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func icon(_ habit: JourneyHabit) -> String {
+        if habit.ticked { return "checkmark.circle.fill" }
+        return habit.needsPhoto ? "camera" : "circle"
+    }
+
+    /// A photo habit opens the journey, where the camera is; a plain one ticks here.
+    private func tap(_ habit: JourneyHabit) {
+        if habit.needsPhoto && !habit.ticked {
+            store.open(.journey)
+        } else {
+            Task { await store.toggle(journeyHabit: habit.name, on: !habit.done) }
+        }
+    }
+}
+
+/// The orders the To do list can be shown in. "My order" is the one dragging changes.
 enum TaskSort: String, CaseIterable, Identifiable {
-    case mine, newest, oldest, time, name
+    case mine, newest, oldest, name
 
     var id: String { rawValue }
 
@@ -602,21 +599,16 @@ enum TaskSort: String, CaseIterable, Identifiable {
         case .mine:   return "My order"
         case .newest: return "Newest first"
         case .oldest: return "Oldest first"
-        case .time:   return "By time"
         case .name:   return "A to Z"
         }
     }
 
-    /// Whatever the order, the tasks with a time stay on top, in time order;
-    /// the chosen order arranges the loose ones under them.
     func apply(_ tasks: [TaskItem]) -> [TaskItem] {
-        let timed = tasks.filter { !$0.start.isEmpty }.sorted { $0.start < $1.start }
-        let loose = tasks.filter { $0.start.isEmpty }
         switch self {
-        case .mine, .time: return timed + loose
-        case .newest: return timed + loose.sorted { ($0.made ?? "") > ($1.made ?? "") }
-        case .oldest: return timed + loose.sorted { ($0.made ?? "") < ($1.made ?? "") }
-        case .name:   return timed + loose.sorted { $0.task.localizedCaseInsensitiveCompare($1.task) == .orderedAscending }
+        case .mine:   return tasks
+        case .newest: return tasks.sorted { ($0.made ?? "") > ($1.made ?? "") }
+        case .oldest: return tasks.sorted { ($0.made ?? "") < ($1.made ?? "") }
+        case .name:   return tasks.sorted { $0.task.localizedCaseInsensitiveCompare($1.task) == .orderedAscending }
         }
     }
 }

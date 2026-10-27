@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "4.5",
-      "versionDate": "2026-10-16T00:00:00Z",
-      "versionDescription": "Alarms ring properly now: three rings a minute apart, shown even while the app is open, and the app asks for notification permission when you switch one on. New time sheet with quick picks, wheels and durations, starting at the current time.",
+      "version": "4.6",
+      "versionDate": "2026-10-27T00:00:00Z",
+      "versionDescription": "A simpler app: Today shows your schedule, to-dos and Fat loss in one place, with old carried-over tasks folded away (move them all to Later in one tap). Later joins long-term plans and notes. Fat loss has one check-in card for habits, weight and calories. Money removed.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1526734,
+      "size": 1415501,
       "versions": [
         {
-          "version": "4.5",
-          "buildVersion": "37",
-          "date": "2026-10-16",
-          "localizedDescription": "Alarms ring properly now: three rings a minute apart, shown even while the app is open, and the app asks for notification permission when you switch one on. New time sheet with quick picks, wheels and durations, starting at the current time.",
+          "version": "4.6",
+          "buildVersion": "38",
+          "date": "2026-10-27",
+          "localizedDescription": "A simpler app: Today shows your schedule, to-dos and Fat loss in one place, with old carried-over tasks folded away (move them all to Later in one tap). Later joins long-term plans and notes. Fat loss has one check-in card for habits, weight and calories. Money removed.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1526734,
+          "size": 1415501,
           "minOSVersion": "18.0"
         }
       ]

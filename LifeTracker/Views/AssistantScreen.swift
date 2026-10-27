@@ -15,11 +15,10 @@ struct AssistantScreen: View {
     private let shortcuts: [(label: String, icon: String, text: String)] = [
         ("Add task", "plus.circle", "Add task: "),
         ("Tomorrow", "arrow.right.circle", "Tomorrow: "),
-        ("Spent", "arrow.up.right", "Spent: "),
-        ("Received", "arrow.down.left", "Received: "),
         ("Tick habit", "flame", "Tick habit: "),
         ("Weight", "scalemass", "Weight: "),
-        ("Note", "note.text", "Note: "),
+        ("Calories", "fork.knife", "Calories: "),
+        ("Later", "tray", "Later: "),
     ]
 
     private let ideas = [

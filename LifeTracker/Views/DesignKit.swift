@@ -12,9 +12,9 @@ enum UI {
 
     static let radius: CGFloat = 16
     #if os(macOS)
-    static let rowHeight: CGFloat = 46
+    static let rowHeight: CGFloat = 40
     #else
-    static let rowHeight: CGFloat = 58
+    static let rowHeight: CGFloat = 50
     #endif
 
     #if os(macOS)

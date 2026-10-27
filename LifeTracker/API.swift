@@ -96,6 +96,18 @@ struct TrackerAPI: Sendable {
 
     /// Takes a task off the day and files it under Long Term. The answer carries the
     /// other tabs too, so the plan is already in its list when you go to look.
+    /// Many tasks to Later in one go — the carried-over pile.
+    func toLater(_ ids: [String]) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "tolong", "ids": ids.joined(separator: ",")])
+        return (r.0, r.2)
+    }
+
+    /// A Later item comes back as a task on today.
+    func planToToday(row: Int) async throws -> (TrackerState, SheetExtra?) {
+        let r = try await raw(["api": "plantoday", "row": String(row)])
+        return (r.0, r.2)
+    }
+
     func toLongTerm(_ id: String) async throws -> (TrackerState, SheetExtra?) {
         let r = try await raw(["api": "tolong", "id": id])
         return (r.0, r.2)
@@ -409,7 +421,6 @@ struct TrackerAPI: Sendable {
         var heard: String?            /* what a voice note was understood to say */
         var extra: SheetExtra?        /* comes back when a plan gained a picture */
         var state: TrackerState?
-        var money: MoneyMonth?
     }
 
     /// Says something to the assistant. It may change things on the way to its
@@ -441,16 +452,6 @@ struct TrackerAPI: Sendable {
         let answer = try JSONDecoder().decode(Answer.self, from: data)
         guard answer.ok else { throw Failure.server(answer.error ?? "The assistant could not answer.") }
         return answer
-    }
-
-    // MARK: - Money
-
-    /// Any money call: add, edit, remove, set what the month began with, or just
-    /// look at another month. Each answers with the day's numbers and that month.
-    func money(_ params: [String: String]) async throws -> (TrackerState, MoneyMonth?) {
-        let answer = try await reply(params)
-        guard let state = answer.state else { throw Failure.server(answer.error ?? "The server said no.") }
-        return (state, answer.money)
     }
 
     private func raw(_ params: [String: String]) async throws -> (TrackerState, String, SheetExtra?) {
