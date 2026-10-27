@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "4.6",
+      "version": "4.7",
       "versionDate": "2026-10-27T00:00:00Z",
-      "versionDescription": "A simpler app: Today shows your schedule, to-dos and Fat loss in one place, with old carried-over tasks folded away (move them all to Later in one tap). Later joins long-term plans and notes. Fat loss has one check-in card for habits, weight and calories. Money removed.",
+      "versionDescription": "Priority: flag any task and it goes to the top of Today. Fat loss redrawn without photos — a clean checklist, weight and calories. Daily tasks first on Today, Fat loss below.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1415501,
+      "size": 1430962,
       "versions": [
         {
-          "version": "4.6",
-          "buildVersion": "38",
+          "version": "4.7",
+          "buildVersion": "39",
           "date": "2026-10-27",
-          "localizedDescription": "A simpler app: Today shows your schedule, to-dos and Fat loss in one place, with old carried-over tasks folded away (move them all to Later in one tap). Later joins long-term plans and notes. Fat loss has one check-in card for habits, weight and calories. Money removed.",
+          "localizedDescription": "Priority: flag any task and it goes to the top of Today. Fat loss redrawn without photos — a clean checklist, weight and calories. Daily tasks first on Today, Fat loss below.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1415501,
+          "size": 1430962,
           "minOSVersion": "18.0"
         }
       ]

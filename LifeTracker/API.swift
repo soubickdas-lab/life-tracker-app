@@ -82,8 +82,12 @@ struct TrackerAPI: Sendable {
         try await send(["api": "state"])
     }
 
-    func add(_ text: String) async throws -> (TrackerState, String) {
-        try await sendWithReply(["api": "add", "text": text])
+    func add(_ text: String, priority: Bool = false) async throws -> (TrackerState, String) {
+        try await sendWithReply(["api": "add", "text": text, "prio": priority ? "1" : "0"])
+    }
+
+    func setPriority(_ id: String, _ on: Bool) async throws -> (TrackerState, String) {
+        try await sendWithReply(["api": "prio", "id": id, "level": on ? "1" : "0", "light": "1"])
     }
 
     func setDone(_ id: String, _ done: Bool) async throws -> TrackerState {

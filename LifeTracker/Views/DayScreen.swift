@@ -8,6 +8,7 @@ struct DayScreen: View {
     @State private var label = "Today"
     @State private var newTask = ""
     @State private var newSlot = ""
+    @State private var newPriority = false
     @AppStorage("taskSort") private var sortKey = TaskSort.mine.rawValue
     @AppStorage("carriedOpen") private var carriedOpen = false
     @State private var doneOpen = false
@@ -27,10 +28,10 @@ struct DayScreen: View {
             if let day {
                 header(day)
                 composer(day)
+                taskPanel(day)
                 if label == "Today", let journey = store.state.journeys.first {
                     JourneyCard(journey: journey)
                 }
-                taskPanel(day)
                 if label == "Today" { habitsPanel }
             } else {
                 Panel { EmptyHint(icon: "arrow.clockwise", text: "Loading your day…") }
@@ -62,13 +63,18 @@ struct DayScreen: View {
     private var open: [TaskItem] {
         (day?.tasks ?? []).filter { !$0.done || lingering.contains($0.id) }
     }
+    /* the flagged ones come first, whatever day they came from; timed ones by time */
+    private var priority: [TaskItem] {
+        let flagged = open.filter(\.isPriority)
+        return flagged.filter { !$0.start.isEmpty }.sorted { $0.start < $1.start } + flagged.filter { $0.start.isEmpty }
+    }
     private var scheduled: [TaskItem] {
-        open.filter { !$0.start.isEmpty && !$0.carried }.sorted { $0.start < $1.start }
+        open.filter { !$0.start.isEmpty && !$0.carried && !$0.isPriority }.sorted { $0.start < $1.start }
     }
     private var loose: [TaskItem] {
-        (TaskSort(rawValue: sortKey) ?? .mine).apply(open.filter { $0.start.isEmpty && !$0.carried })
+        (TaskSort(rawValue: sortKey) ?? .mine).apply(open.filter { $0.start.isEmpty && !$0.carried && !$0.isPriority })
     }
-    private var carried: [TaskItem] { open.filter(\.carried) }
+    private var carried: [TaskItem] { open.filter { $0.carried && !$0.isPriority } }
     private var done: [TaskItem] {
         (day?.tasks ?? []).filter { $0.done && !lingering.contains($0.id) }
     }
@@ -125,6 +131,15 @@ struct DayScreen: View {
                 .font(.system(size: 15))
                 .focused($focus, equals: "new")
                 .onSubmit { add(day) }
+            Button { newPriority.toggle() } label: {
+                Image(systemName: newPriority ? "flag.fill" : "flag")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(newPriority ? .white : Color.secondary)
+                    .frame(width: 28, height: 26)
+                    .background(newPriority ? UI.rose : Color.primary.opacity(0.05), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(newPriority ? "Adding as a priority" : "Add as a priority")
             SlotPicker(slot: $newSlot, dayIsToday: label == "Today")
             if ready {
                 Button { add(day) } label: {
@@ -150,24 +165,30 @@ struct DayScreen: View {
     @ViewBuilder private func taskPanel(_ day: DayBlock) -> some View {
         Panel(padding: 0) {
             VStack(spacing: 0) {
-                if scheduled.isEmpty && loose.isEmpty && carried.isEmpty {
+                if priority.isEmpty && scheduled.isEmpty && loose.isEmpty && carried.isEmpty {
                     EmptyHint(icon: day.tasks.isEmpty ? "sun.max" : "checkmark.seal",
                               text: day.tasks.isEmpty ? "Nothing planned yet." : "All clear — everything is done.")
                 }
 
+                if !priority.isEmpty {
+                    section("Priority", count: priority.count, tint: UI.rose)
+                    rows(priority, timed: false)
+                }
+
                 if !scheduled.isEmpty {
+                    if !priority.isEmpty { gap }
                     section("Schedule", count: scheduled.count)
                     rows(scheduled, timed: true)
                 }
 
                 if !loose.isEmpty {
-                    if !scheduled.isEmpty { gap }
+                    if !scheduled.isEmpty || !priority.isEmpty { gap }
                     section("To do", count: loose.count) { sortMenu }
                     rows(loose, timed: false, draggable: true)
                 }
 
                 if !carried.isEmpty {
-                    if !scheduled.isEmpty || !loose.isEmpty { gap }
+                    if !priority.isEmpty || !scheduled.isEmpty || !loose.isEmpty { gap }
                     fold(title: "Carried over", count: carried.count, open: $carriedOpen, tint: UI.amber) {
                         Button { confirmLater = true } label: {
                             Text("Move all to Later")
@@ -194,13 +215,16 @@ struct DayScreen: View {
 
     private var gap: some View { RowLine().padding(.top, 4) }
 
-    private func section(_ title: String, count: Int,
+    private func section(_ title: String, count: Int, tint: Color? = nil,
                          @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View {
         HStack(spacing: 8) {
+            if let tint {
+                Image(systemName: "flag.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(tint)
+            }
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(0.7)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(tint ?? .secondary)
             Text("\(count)")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(.tertiary)
@@ -351,6 +375,9 @@ struct DayScreen: View {
             if task.repeats {
                 Image(systemName: "repeat").font(.system(size: 10, weight: .bold)).foregroundStyle(UI.violet.opacity(0.8))
             }
+            if task.isPriority {
+                Image(systemName: "flag.fill").font(.system(size: 11)).foregroundStyle(UI.rose)
+            }
 
             menu(task)
         }
@@ -364,6 +391,9 @@ struct DayScreen: View {
     private func menu(_ task: TaskItem) -> some View {
         Menu {
             Button(task.done ? "Mark as not done" : "Mark as done") { tick(task) }
+            Button(task.isPriority ? "Remove priority" : "Mark as priority") {
+                Task { await store.setPriority(task, !task.isPriority) }
+            }
             Button("Rename") { draft = task.task; editing = task.id }
             Button(task.slot.isEmpty ? "Set a time" : "Change the time") { timing = task }
             if !task.slot.isEmpty {
@@ -454,10 +484,10 @@ struct DayScreen: View {
     // MARK: - Actions
 
     private func add(_ day: DayBlock) {
-        let name = newTask, slot = newSlot
+        let name = newTask, slot = newSlot, flagged = newPriority
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        newTask = ""; newSlot = ""
-        Task { await store.add(name, slot: slot, to: day) }
+        newTask = ""; newSlot = ""; newPriority = false
+        Task { await store.add(name, slot: slot, to: day, priority: flagged) }
     }
 
     private func commit(_ task: TaskItem) {
@@ -513,7 +543,7 @@ struct DayScreen: View {
     }
 }
 
-/// Fat loss on Today: where you are in it, and today's four boxes — one tap each.
+/// Fat loss on Today: where you are in it, and today's boxes — one tap each.
 struct JourneyCard: View {
     @Environment(Store.self) private var store
     var journey: Journey
@@ -553,16 +583,16 @@ struct JourneyCard: View {
                             HStack(spacing: 6) {
                                 Image(systemName: icon(habit))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(habit.ticked ? UI.mint : UI.violet)
+                                    .foregroundStyle(habit.done ? UI.mint : UI.violet)
                                 Text(habit.name)
                                     .font(.system(size: 12.5, weight: .medium))
-                                    .foregroundStyle(habit.ticked ? .secondary : .primary)
+                                    .foregroundStyle(habit.done ? .secondary : .primary)
                                     .lineLimit(1)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 9)
                             .padding(.vertical, 7)
-                            .background(habit.ticked ? UI.mint.opacity(0.10) : UI.violet.opacity(0.07),
+                            .background(habit.done ? UI.mint.opacity(0.10) : UI.violet.opacity(0.07),
                                         in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                             .contentShape(Rectangle())
                         }
@@ -574,17 +604,11 @@ struct JourneyCard: View {
     }
 
     private func icon(_ habit: JourneyHabit) -> String {
-        if habit.ticked { return "checkmark.circle.fill" }
-        return habit.needsPhoto ? "camera" : "circle"
+        habit.done ? "checkmark.circle.fill" : "circle"
     }
 
-    /// A photo habit opens the journey, where the camera is; a plain one ticks here.
     private func tap(_ habit: JourneyHabit) {
-        if habit.needsPhoto && !habit.ticked {
-            store.open(.journey)
-        } else {
-            Task { await store.toggle(journeyHabit: habit.name, on: !habit.done) }
-        }
+        Task { await store.toggle(journeyHabit: habit.name, on: !habit.done) }
     }
 }
 

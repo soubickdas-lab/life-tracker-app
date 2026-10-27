@@ -49,20 +49,23 @@ struct TaskItem: Codable, Identifiable, Sendable, Equatable {
     var carried: Bool
     var made: String?              /* when it was written down, for sorting */
     var alarm: Bool?               /* rings at its time */
+    var prio: Int?                 /* 1 = marked as a priority */
     var pending: Bool = false      /* typed here, not written to the sheet yet */
 
     var rings: Bool { alarm == true && !slot.isEmpty }
+    var isPriority: Bool { (prio ?? 0) > 0 }
 
     enum CodingKeys: String, CodingKey {
-        case id, task, start, end, slot, done, carried, made, alarm
+        case id, task, start, end, slot, done, carried, made, alarm, prio
         case repeats = "repeat"
     }
 
     init(id: String, task: String, start: String = "", end: String = "", slot: String = "",
-         done: Bool = false, repeats: Bool = false, carried: Bool = false, pending: Bool = false) {
+         done: Bool = false, repeats: Bool = false, carried: Bool = false, pending: Bool = false,
+         prio: Int? = nil) {
         self.id = id; self.task = task; self.start = start; self.end = end
         self.slot = slot; self.done = done; self.repeats = repeats
-        self.carried = carried; self.pending = pending
+        self.carried = carried; self.pending = pending; self.prio = prio
     }
 }
 

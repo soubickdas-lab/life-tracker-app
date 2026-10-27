@@ -496,14 +496,15 @@ final class Store {
     }
 
     /// Shows the new task straight away on that day, then sends it to the sheet.
-    func add(_ name: String, slot: String, to day: DayBlock) async {
+    func add(_ name: String, slot: String, to day: DayBlock, priority: Bool = false) async {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
 
         if let index = state.days.firstIndex(where: { $0.date == day.date }) {
             state.days[index].tasks.insert(
                 TaskItem(id: "pending-" + UUID().uuidString, task: clean,
-                         slot: slot.trimmingCharacters(in: .whitespaces), pending: true), at: 0)
+                         slot: slot.trimmingCharacters(in: .whitespaces), pending: true,
+                         prio: priority ? 1 : 0), at: 0)
         }
 
         var line = clean
@@ -514,7 +515,18 @@ final class Store {
         default: break
         }
         let client = api
-        await runWithReply { try await client.add(line) }
+        await runWithReply { try await client.add(line, priority: priority) }
+    }
+
+    /// The one flag that lifts a task to the top of the day.
+    func setPriority(_ task: TaskItem, _ on: Bool) async {
+        for day in state.days.indices {
+            if let row = state.days[day].tasks.firstIndex(where: { $0.id == task.id }) {
+                state.days[day].tasks[row].prio = on ? 1 : 0
+            }
+        }
+        let client = api
+        await runWithReply { try await client.setPriority(task.id, on) }
     }
 
     func toggle(_ habit: Habit) async {
