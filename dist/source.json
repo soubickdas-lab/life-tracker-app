@@ -16,19 +16,19 @@
       "tintColor": "5C6BF2",
       "category": "lifestyle",
       "screenshotURLs": [],
-      "version": "4.7",
-      "versionDate": "2026-10-27T00:00:00Z",
-      "versionDescription": "Priority: flag any task and it goes to the top of Today. Fat loss redrawn without photos — a clean checklist, weight and calories. Daily tasks first on Today, Fat loss below.",
+      "version": "4.8",
+      "versionDate": "2026-10-31T00:00:00Z",
+      "versionDescription": "Ending a journey now asks first, so it can't be deleted by a stray tap. Fat loss says Starts tomorrow before day 1.",
       "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-      "size": 1430962,
+      "size": 1436072,
       "versions": [
         {
-          "version": "4.7",
-          "buildVersion": "39",
-          "date": "2026-10-27",
-          "localizedDescription": "Priority: flag any task and it goes to the top of Today. Fat loss redrawn without photos — a clean checklist, weight and calories. Daily tasks first on Today, Fat loss below.",
+          "version": "4.8",
+          "buildVersion": "40",
+          "date": "2026-10-31",
+          "localizedDescription": "Ending a journey now asks first, so it can't be deleted by a stray tap. Fat loss says Starts tomorrow before day 1.",
           "downloadURL": "https://raw.githubusercontent.com/soubickdas-lab/life-tracker-app/main/dist/LifeTracker.ipa",
-          "size": 1430962,
+          "size": 1436072,
           "minOSVersion": "18.0"
         }
       ]

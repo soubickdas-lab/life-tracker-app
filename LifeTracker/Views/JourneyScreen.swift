@@ -6,6 +6,7 @@ struct JourneyScreen: View {
     @Environment(Store.self) private var store
     @State private var writing = false
     @State private var editing: Journey?
+    @State private var ending: Journey?
     @State private var kg = ""
     @State private var kcal = ""
 
@@ -32,6 +33,17 @@ struct JourneyScreen: View {
         }
         .sheet(isPresented: $writing) { JourneyForm(journey: nil) }
         .sheet(item: $editing) { JourneyForm(journey: $0) }
+        .alert("End this journey?", isPresented: Binding(
+            get: { ending != nil },
+            set: { if !$0 { ending = nil } })) {
+            Button("Keep it", role: .cancel) { ending = nil }
+            Button("End journey", role: .destructive) {
+                if let journey = ending { Task { await store.stopJourney(journey.id) } }
+                ending = nil
+            }
+        } message: {
+            Text("This deletes \(ending?.name ?? "it") and its day count for good. Your habits and weight history stay.")
+        }
         .refreshable { await store.refresh(quietly: true) }
     }
 
@@ -45,10 +57,12 @@ struct JourneyScreen: View {
                         .font(.system(size: 11, weight: .bold))
                         .tracking(1.2)
                         .opacity(0.8)
-                    Text(journey.startsIn > 0 ? "Starts in \(journey.startsIn)" : "Day \(journey.dayNumber)")
+                    Text(journey.startsIn == 1 ? "Starts tomorrow" : journey.startsIn > 1 ? "Starts in \(journey.startsIn) days" : "Day \(journey.dayNumber)")
                         .font(.system(size: 44, weight: .heavy, design: .rounded))
                         .tracking(-1)
-                    Text("of \(journey.daysTotal)  ·  \(pretty(journey.starts)) → \(pretty(journey.ends))")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text("\(journey.startsIn > 0 ? "\(journey.daysTotal) days" : "of \(journey.daysTotal)")  ·  \(pretty(journey.starts)) → \(pretty(journey.ends))")
                         .font(.system(size: 13, weight: .medium))
                         .opacity(0.85)
                 }
@@ -103,7 +117,7 @@ struct JourneyScreen: View {
             }
             Divider()
             Button("Start a new journey") { writing = true }
-            Button("End this journey", role: .destructive) { Task { await store.stopJourney(journey.id) } }
+            Button("End this journey", role: .destructive) { ending = journey }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 15, weight: .bold))
